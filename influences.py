@@ -2,8 +2,13 @@ from abc import ABC, abstractmethod
 from actions import (ActionEffect, AssassinationEffect, StealEffect, TaxEffect,
                      IncomeEffect, ForeignAidEffect, CoupEffect)
 
-
 class Influence(ABC):
+
+    def __eq__(self, other: object) -> bool:
+        return type(self) is type(other)
+
+    def __hash__(self) -> int:
+        return hash(type(self))
 
     @abstractmethod
     def get_name(self) -> str:
@@ -118,9 +123,6 @@ class Captain(Influence):
 
     def get_blockers(self) -> list[type[Influence]]:
         return [Captain]
-
-
-# ── Ações básicas (sem carta) ─────────────────────────────────────────────────
 
 class IncomeAction(Influence):
 

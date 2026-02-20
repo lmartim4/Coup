@@ -1,10 +1,10 @@
 import math
 import pygame
-from game_state import GameStateView, PendingDecision, PlayerStateView
+from game_state import GameStateView, PendingDecision, PlayerStateView, DecisionType, DecisionResponse
 
-# Mesa centralizada ligeiramente acima do centro da tela
+# Mesa centralizada no centro da tela
 _TABLE_CX_RATIO = 0.50
-_TABLE_CY_RATIO = 0.43
+_TABLE_CY_RATIO = 0.50
 
 
 class Renderer:
@@ -159,7 +159,7 @@ class Renderer:
                            color=(180, 180, 220))
 
             # Botão "Selecionar" na linha de cada alvo possível
-            if (is_my_decision and decision.decision_type == 'pick_target'
+            if (is_my_decision and decision.decision_type == DecisionType.PICK_TARGET
                     and i != state.viewer_index and i in decision.options):
                 bx = cx - self.BTN_W // 2
                 by = py + ph + 8
@@ -173,15 +173,14 @@ class Renderer:
             vcx, vcy = seats[state.viewer_index]
             vph      = self._panel_height(state.players[state.viewer_index])
             btn_y    = vcy - vph // 2 - self.BTN_H - 14
-            btn_x    = W // 2 - 240
 
-            if decision.decision_type == 'pick_target':
+            if decision.decision_type == DecisionType.PICK_TARGET:
                 action_name = decision.context.get('action_name', '')
                 self._text(f"Usando: {action_name} — escolha um alvo",
                            (W // 2 - 145, btn_y + 10),
                            color=(255, 220, 100))
             else:
-                new = self._draw_decision_btns(decision, state, btn_x, btn_y, mouse_pos)
+                new = self._draw_decision_btns(decision, state, btn_y, mouse_pos)
                 clickable.extend(new)
 
         # Game over
@@ -234,47 +233,56 @@ class Renderer:
     # ------------------------------------------------------------------ botões por tipo de decisão
 
     def _draw_decision_btns(self, decision: PendingDecision, state: GameStateView,
-                             bx: int, by: int, mouse_pos: tuple) -> list:
+                             by: int, mouse_pos: tuple) -> list:
         clickable = []
         dt  = decision.decision_type
         ctx = decision.context
+        W   = self.screen.get_width()
 
-        if dt == 'pick_action':
-            for k, name in enumerate(decision.options):
+        def _centered_bx(n_btns: int) -> int:
+            total = n_btns * self.BTN_W + (n_btns - 1) * self.BTN_GAP
+            return W // 2 - total // 2
+
+        if dt == DecisionType.PICK_ACTION:
+            bx = _centered_bx(len(decision.options))
+            for k, option in enumerate(decision.options):
                 x    = bx + k * (self.BTN_W + self.BTN_GAP)
-                rect = self._btn(x, by, self.BTN_W, self.BTN_H, name, mouse_pos,
+                rect = self._btn(x, by, self.BTN_W, self.BTN_H, option.get_name(), mouse_pos,
                                  self.ACTION_COLOR, self.ACTION_HOVER)
-                clickable.append((rect, name))
+                clickable.append((rect, option))
 
-        elif dt == 'defend':
+        elif dt == DecisionType.DEFEND:
+            bx = _centered_bx(3)
             hint = (f"{ctx.get('attacker_name', '')} usa "
                     f"{ctx.get('action_name', '')}")
             self._text(hint, (bx, by - 18), color=(255, 220, 100))
             defs = [
-                (f"Bloquear ({ctx.get('block_card', '')})", 'block',        self.BLOCK_COLOR,  self.BLOCK_HOVER),
-                ("Duvidar ação",                            'doubt_action', self.DOUBT_COLOR,  self.DOUBT_HOVER),
-                ("Aceitar",                                 'accept',       self.ACCEPT_COLOR, self.ACCEPT_HOVER),
+                (f"Bloquear ({ctx.get('block_card', '')})", DecisionResponse.BLOCK,        self.BLOCK_COLOR,  self.BLOCK_HOVER),
+                ("Duvidar ação",                            DecisionResponse.DOUBT_ACTION, self.DOUBT_COLOR,  self.DOUBT_HOVER),
+                ("Aceitar",                                 DecisionResponse.ACCEPT,       self.ACCEPT_COLOR, self.ACCEPT_HOVER),
             ]
             for k, (label, key, color, hover) in enumerate(defs):
                 x    = bx + k * (self.BTN_W + self.BTN_GAP)
                 rect = self._btn(x, by, self.BTN_W, self.BTN_H, label, mouse_pos, color, hover)
                 clickable.append((rect, key))
 
-        elif dt == 'block_or_pass':
+        elif dt == DecisionType.BLOCK_OR_PASS:
+            bx = _centered_bx(2)
             hint = (f"{ctx.get('actor_name', '')} anuncia "
                     f"{ctx.get('action_name', '')}")
             self._text(hint, (bx, by - 18), color=(255, 220, 100))
             pairs = [
-                (f"Bloquear ({ctx.get('block_card', '')})", 'block', self.BLOCK_COLOR,  self.BLOCK_HOVER),
-                ("Passar",                                   'pass',  self.PASS_COLOR,   self.PASS_HOVER),
+                (f"Bloquear ({ctx.get('block_card', '')})", DecisionResponse.BLOCK, self.BLOCK_COLOR,  self.BLOCK_HOVER),
+                ("Passar",                                   DecisionResponse.PASS,  self.PASS_COLOR,   self.PASS_HOVER),
             ]
             for k, (label, key, color, hover) in enumerate(pairs):
                 x    = bx + k * (self.BTN_W + self.BTN_GAP)
                 rect = self._btn(x, by, self.BTN_W, self.BTN_H, label, mouse_pos, color, hover)
                 clickable.append((rect, key))
 
-        elif dt in ('challenge_action', 'challenge_block'):
-            if dt == 'challenge_action':
+        elif dt in (DecisionType.CHALLENGE_ACTION, DecisionType.CHALLENGE_BLOCK):
+            bx = _centered_bx(2)
+            if dt == DecisionType.CHALLENGE_ACTION:
                 hint = (f"{ctx.get('actor_name', '')} anuncia "
                         f"{ctx.get('action_name', '')}")
             else:
@@ -282,15 +290,16 @@ class Renderer:
                         f"{ctx.get('block_card', '')}")
             self._text(hint, (bx, by - 18), color=(200, 180, 255))
             pairs = [
-                ("Duvidar", 'doubt', self.DOUBT_COLOR, self.DOUBT_HOVER),
-                ("Passar",  'pass',  self.PASS_COLOR,  self.PASS_HOVER),
+                ("Duvidar", DecisionResponse.DOUBT, self.DOUBT_COLOR, self.DOUBT_HOVER),
+                ("Passar",  DecisionResponse.PASS,  self.PASS_COLOR,  self.PASS_HOVER),
             ]
             for k, (label, key, color, hover) in enumerate(pairs):
                 x    = bx + k * (self.BTN_W + self.BTN_GAP)
                 rect = self._btn(x, by, self.BTN_W, self.BTN_H, label, mouse_pos, color, hover)
                 clickable.append((rect, key))
 
-        elif dt == 'lose_influence':
+        elif dt == DecisionType.LOSE_INFLUENCE:
+            bx = _centered_bx(len(decision.options))
             self._text("Escolha uma carta para perder:", (bx, by - 18),
                        color=(255, 150, 150))
             viewer = next(p for p in state.players if p.index == state.viewer_index)
@@ -302,12 +311,13 @@ class Renderer:
                                  self.ACCEPT_COLOR, self.ACCEPT_HOVER)
                 clickable.append((rect, card_idx))
 
-        elif dt == 'reveal':
+        elif dt == DecisionType.REVEAL:
+            bx = _centered_bx(2)
             self._text(f"Prove que tem {ctx.get('card_name', '')}:",
                        (bx, by - 18), color=(180, 210, 255))
             pairs = [
-                ("Revelar", 'reveal', self.BLOCK_COLOR,  self.BLOCK_HOVER),
-                ("Recusar", 'refuse', self.ACCEPT_COLOR, self.ACCEPT_HOVER),
+                ("Revelar", DecisionResponse.REVEAL, self.BLOCK_COLOR,  self.BLOCK_HOVER),
+                ("Recusar", DecisionResponse.REFUSE, self.ACCEPT_COLOR, self.ACCEPT_HOVER),
             ]
             for k, (label, key, color, hover) in enumerate(pairs):
                 x    = bx + k * (self.BTN_W + self.BTN_GAP)

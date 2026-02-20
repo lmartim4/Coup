@@ -1,16 +1,10 @@
-"""
-GameEngine: lógica pura do Coup, sem pygame.
-
-O engine expõe um único PendingDecision por vez. O orquestrador (game.py)
-consulta engine.pending_decision, roteia para o agente correto e chama
-engine.submit_decision(choice) para avançar o jogo.
-"""
 from influences import Assassin, Duke, Countess, Captain, IncomeAction, ForeignAidAction, CoupAction
-from player import Player
+from game_agent import Player
 from game_state import (
     PendingDecision, PlayerStateView, GameStateView,
     PhaseAction, PhaseDefense, PhaseChallenge, PhaseDoubtBlock,
     PhaseBlockOpen, PhaseLoseInfluence, PhaseReveal, RevealContext,
+    DecisionType, DecisionResponse,
 )
 
 ALL_ACTIONS = [
@@ -73,8 +67,8 @@ class GameEngine:
             rv = self._phase_reveal
             self.pending_decision = PendingDecision(
                 player_index=rv.challenged_player,
-                decision_type='reveal',
-                options=['reveal', 'refuse'],
+                decision_type=DecisionType.REVEAL,
+                options=[DecisionResponse.REVEAL, DecisionResponse.REFUSE],
                 context={
                     'card_name':     rv.card_name,
                     'context':       rv.context,
@@ -87,7 +81,7 @@ class GameEngine:
             target = self.players[li.target_idx]
             self.pending_decision = PendingDecision(
                 player_index=li.target_idx,
-                decision_type='lose_influence',
+                decision_type=DecisionType.LOSE_INFLUENCE,
                 options=list(range(len(target.influences))),
             )
 
@@ -95,8 +89,8 @@ class GameEngine:
             ch = self._phase_challenge
             self.pending_decision = PendingDecision(
                 player_index=ch.queue[0],
-                decision_type='challenge_action',
-                options=['doubt', 'pass'],
+                decision_type=DecisionType.CHALLENGE_ACTION,
+                options=[DecisionResponse.DOUBT, DecisionResponse.PASS],
                 context={
                     'action_name': ch.action.get_name(),
                     'actor_name':  self.players[ch.actor].name,
@@ -107,8 +101,8 @@ class GameEngine:
             db = self._phase_doubt_block
             self.pending_decision = PendingDecision(
                 player_index=db.queue[0],
-                decision_type='challenge_block',
-                options=['doubt', 'pass'],
+                decision_type=DecisionType.CHALLENGE_BLOCK,
+                options=[DecisionResponse.DOUBT, DecisionResponse.PASS],
                 context={
                     'block_card':   db.action.get_block_name(),
                     'blocker_name': self.players[db.target].name,
@@ -120,8 +114,8 @@ class GameEngine:
             bo = self._phase_block_open
             self.pending_decision = PendingDecision(
                 player_index=bo.queue[0],
-                decision_type='block_or_pass',
-                options=['block', 'pass'],
+                decision_type=DecisionType.BLOCK_OR_PASS,
+                options=[DecisionResponse.BLOCK, DecisionResponse.PASS],
                 context={
                     'action_name': bo.action.get_name(),
                     'block_card':  bo.action.get_block_name(),
@@ -133,8 +127,8 @@ class GameEngine:
             df = self._phase_defense
             self.pending_decision = PendingDecision(
                 player_index=df.target_idx,
-                decision_type='defend',
-                options=['block', 'doubt_action', 'accept'],
+                decision_type=DecisionType.DEFEND,
+                options=[DecisionResponse.BLOCK, DecisionResponse.DOUBT_ACTION, DecisionResponse.ACCEPT],
                 context={
                     'action_name':   df.action.get_name(),
                     'block_card':    df.action.get_block_name(),
@@ -147,7 +141,7 @@ class GameEngine:
             targets = [i for i in self._alive_indices() if i != self.current_turn]
             self.pending_decision = PendingDecision(
                 player_index=self.current_turn,
-                decision_type='pick_target',
+                decision_type=DecisionType.PICK_TARGET,
                 options=targets,
                 context={'action_name': self._phase_action.action.get_name()},
             )
@@ -162,8 +156,8 @@ class GameEngine:
                 available = [a for a in ALL_ACTIONS if a.can_use(player)]
             self.pending_decision = PendingDecision(
                 player_index=self.current_turn,
-                decision_type='pick_action',
-                options=[a.get_name() for a in available],
+                decision_type=DecisionType.PICK_ACTION,
+                options=available,
             )
 
     # ------------------------------------------------------------------ submit
@@ -174,22 +168,21 @@ class GameEngine:
         self.pending_decision = None
 
         handlers = {
-            'pick_action':      self._on_pick_action,
-            'pick_target':      self._on_pick_target,
-            'defend':           self._on_defend,
-            'challenge_action': self._on_challenge_action,
-            'challenge_block':  self._on_challenge_block,
-            'block_or_pass':    self._on_block_or_pass,
-            'lose_influence':   self._on_lose_influence,
-            'reveal':           self._on_reveal,
+            DecisionType.PICK_ACTION:      self._on_pick_action,
+            DecisionType.PICK_TARGET:      self._on_pick_target,
+            DecisionType.DEFEND:           self._on_defend,
+            DecisionType.CHALLENGE_ACTION: self._on_challenge_action,
+            DecisionType.CHALLENGE_BLOCK:  self._on_challenge_block,
+            DecisionType.BLOCK_OR_PASS:    self._on_block_or_pass,
+            DecisionType.LOSE_INFLUENCE:   self._on_lose_influence,
+            DecisionType.REVEAL:           self._on_reveal,
         }
         handlers[dt](choice)
         self._emit_decision()
 
     # ------------------------------------------------------------------ handlers
 
-    def _on_pick_action(self, action_name: str):
-        action = next(a for a in ALL_ACTIONS if a.get_name() == action_name)
+    def _on_pick_action(self, action):
         player = self.players[self.current_turn]
 
         if action.requires_target():
@@ -243,7 +236,7 @@ class GameEngine:
             print(f"{player.name} usou {action.get_name()} em {target.name}.")
             self.current_turn = next_turn
 
-    def _on_defend(self, choice: str):
+    def _on_defend(self, choice: DecisionResponse):
         assert self._phase_defense is not None
         df        = self._phase_defense
         target_idx = df.target_idx
@@ -253,7 +246,7 @@ class GameEngine:
         next_turn = self._next_turn(self.current_turn)
         self._phase_defense = None
 
-        if choice == 'block':
+        if choice == DecisionResponse.BLOCK:
             self._phase_doubt_block = PhaseDoubtBlock(
                 attacker=self.current_turn,
                 target=target_idx,
@@ -261,7 +254,7 @@ class GameEngine:
                 queue=[self.current_turn],  # só o atacante pode duvidar do bloqueio
             )
 
-        elif choice == 'doubt_action':
+        elif choice == DecisionResponse.DOUBT_ACTION:
             action_card = action.get_name()
             has_card    = any(inf.get_name() == action_card for inf in player.influences)
             print(f"{target.name} desafia {player.name} a provar que tem {action_card}!")
@@ -279,7 +272,7 @@ class GameEngine:
                 print(f"{player.name} não tem {action_card}. Ação cancelada.")
                 self._lose_one_or_choose(self.current_turn, next_turn)
 
-        else:  # accept
+        else:  # ACCEPT
             print(f"{target.name} aceitou. {player.name} executa {action.get_name()} em {target.name}!")
             if action.causes_influence_loss():
                 self._lose_one_or_choose(target_idx, next_turn)
@@ -287,7 +280,7 @@ class GameEngine:
                 action.apply_effect(player, target)
                 self.current_turn = next_turn
 
-    def _on_challenge_action(self, choice: str):
+    def _on_challenge_action(self, choice: DecisionResponse):
         assert self._phase_challenge is not None
         ch          = self._phase_challenge
         actor_idx   = ch.actor
@@ -298,7 +291,7 @@ class GameEngine:
         doubter     = self.players[doubter_idx]
         next_turn   = self._next_turn(actor_idx)
 
-        if choice == 'doubt':
+        if choice == DecisionResponse.DOUBT:
             card_name = ac_action.get_name()
             has_card  = any(inf.get_name() == card_name for inf in actor.influences)
             print(f"{doubter.name} desafia {actor.name} a provar que tem {card_name}!")
@@ -318,7 +311,7 @@ class GameEngine:
                 print(f"{actor.name} não tem {card_name}. Ação cancelada.")
                 self._lose_one_or_choose(actor_idx, next_turn)
 
-        elif choice == 'pass':
+        elif choice == DecisionResponse.PASS:
             queue.pop(0)
             if not queue:
                 ac_action.apply(actor)
@@ -326,7 +319,7 @@ class GameEngine:
                 self._phase_challenge = None
                 self.current_turn = next_turn
 
-    def _on_challenge_block(self, choice: str):
+    def _on_challenge_block(self, choice: DecisionResponse):
         assert self._phase_doubt_block is not None
         db          = self._phase_doubt_block
         queue       = db.queue
@@ -339,7 +332,7 @@ class GameEngine:
         player      = self.players[attacker]
         next_turn   = self._next_turn(attacker)
 
-        if choice == 'doubt':
+        if choice == DecisionResponse.DOUBT:
             block_card = d_action.get_block_name()
             has_card   = any(inf.get_name() == block_card for inf in target.influences)
             print(f"{doubter.name} desafia {target.name} a provar que tem {block_card}!")
@@ -362,14 +355,14 @@ class GameEngine:
                 # Bloqueio falso: bloqueador perde uma carta (além do efeito da ação)
                 self._lose_one_or_choose(target_idx, next_turn)
 
-        elif choice == 'pass':
+        elif choice == DecisionResponse.PASS:
             queue.pop(0)
             if not queue:
                 print(f"Ninguém duvidou. Bloqueio de {target.name} aceito.")
                 self._phase_doubt_block = None
                 self.current_turn = next_turn
 
-    def _on_block_or_pass(self, choice: str):
+    def _on_block_or_pass(self, choice: DecisionResponse):
         assert self._phase_block_open is not None
         bo          = self._phase_block_open
         actor_idx   = bo.actor
@@ -379,7 +372,7 @@ class GameEngine:
         blocker     = self.players[blocker_idx]
         next_turn   = self._next_turn(actor_idx)
 
-        if choice == 'block':
+        if choice == DecisionResponse.BLOCK:
             print(f"{blocker.name} bloqueia {action.get_name()} com {action.get_block_name()}!")
             self._phase_block_open = None
             # Só o ator pode duvidar do bloqueio
@@ -389,7 +382,7 @@ class GameEngine:
                 action=action,
                 queue=[actor_idx],
             )
-        else:  # pass
+        elif choice == DecisionResponse.PASS:
             queue.pop(0)
             if not queue:
                 actor = self.players[actor_idx]
@@ -411,7 +404,7 @@ class GameEngine:
         self._phase_lose_inf = None
         self.current_turn = next_turn
 
-    def _on_reveal(self, choice: str):
+    def _on_reveal(self, choice: DecisionResponse):
         assert self._phase_reveal is not None
         rv           = self._phase_reveal
         ctx          = rv.context
@@ -426,20 +419,19 @@ class GameEngine:
         doubter_idx  = rv.doubter  # None only for DOUBT_ACTION (not used in that branch)
         self._phase_reveal = None
 
-        has_card = (choice == 'reveal' and
+        has_card = (choice == DecisionResponse.REVEAL and
                     any(inf.get_name() == card_name for inf in challenged.influences))
 
         if ctx == RevealContext.DOUBT_ACTION:
             # Alvo duvidou da ação do atacante
             if has_card:
                 print(f"{challenged.name} revelou {card_name}! Desafio falhou. Ação executada.")
-                if action.causes_influence_loss():
-                    self._lose_one_or_choose(target_idx, next_turn)
-                else:
-                    action.apply_effect(attacker, target)
-                    self.current_turn = next_turn
+                # apply_effect é no-op para ações destrutivas (Assassino); roubo acontece aqui
+                action.apply_effect(attacker, target)
+                # Desafiante (alvo) falhou no desafio → perde uma carta
+                self._lose_one_or_choose(target_idx, next_turn)
             else:
-                msg = "não tinha" if choice == 'reveal' else "recusou revelar."
+                msg = "não tinha" if choice == DecisionResponse.REVEAL else "recusou revelar."
                 print(f"{challenged.name} {msg} {card_name}. Ação cancelada.")
                 self._lose_one_or_choose(attacker_idx, next_turn)
 
@@ -451,7 +443,7 @@ class GameEngine:
                 print(f"{challenged.name} revelou {card_name}! Bloqueio mantido. {doubter.name} perde uma carta.")
                 self._lose_one_or_choose(doubter_idx, next_turn)
             else:
-                msg = "não tinha" if choice == 'reveal' else "recusou revelar."
+                msg = "não tinha" if choice == DecisionResponse.REVEAL else "recusou revelar."
                 print(f"{challenged.name} {msg} {card_name}. Bloqueio falhou. Ação executada.")
                 if not action.causes_influence_loss():
                     action.apply_effect(attacker, challenged)
@@ -468,7 +460,7 @@ class GameEngine:
                 print(f"{challenged.name} usou {action.get_name()} — {action.get_description()}")
                 self._lose_one_or_choose(doubter_idx, next_turn)
             else:
-                msg = "não tinha" if choice == 'reveal' else "recusou revelar."
+                msg = "não tinha" if choice == DecisionResponse.REVEAL else "recusou revelar."
                 print(f"{challenged.name} {msg} {card_name}. Ação cancelada.")
                 self._lose_one_or_choose(attacker_idx, next_turn)
 

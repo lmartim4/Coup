@@ -10,9 +10,8 @@ Responsabilidades:
 import pygame
 import random
 from influences import Assassin, Duke, Countess, Captain
-from player import Player
+from game_agent import Player, BotAgent
 from game_engine import GameEngine
-from bot_agent import BotAgent
 from renderer import Renderer
 
 

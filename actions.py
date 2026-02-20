@@ -1,12 +1,6 @@
 from abc import ABC
 
-
 class ActionEffect(ABC):
-    """
-    Pure game mechanic, decoupled from which Influence card enables it.
-    Different cards can reuse the same effect with different blocker rules.
-    """
-
     def requires_target(self) -> bool:
         return False
 

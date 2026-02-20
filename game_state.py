@@ -2,6 +2,26 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Optional
 
+class DecisionType(Enum):
+    PICK_ACTION      = 'pick_action'
+    PICK_TARGET      = 'pick_target'
+    DEFEND           = 'defend'
+    CHALLENGE_ACTION = 'challenge_action'
+    CHALLENGE_BLOCK  = 'challenge_block'
+    BLOCK_OR_PASS    = 'block_or_pass'
+    LOSE_INFLUENCE   = 'lose_influence'
+    REVEAL           = 'reveal'
+
+
+class DecisionResponse(Enum):
+    PASS         = 'pass'
+    BLOCK        = 'block'
+    DOUBT        = 'doubt'
+    DOUBT_ACTION = 'doubt_action'
+    ACCEPT       = 'accept'
+    REVEAL       = 'reveal'
+    REFUSE       = 'refuse'
+
 
 # ── Internal engine phases ────────────────────────────────────────────────────
 #
@@ -113,24 +133,32 @@ class PendingDecision:
     Decisão que um jogador específico precisa tomar agora.
 
     decision_type / options:
-        'pick_action'      – list[str]   nomes das ações disponíveis
-        'pick_target'      – list[int]   índices dos jogadores alvejáveis
-        'defend'           – list[str]   subconjunto de ['block','doubt_action','accept']
-        'challenge_action' – ['doubt', 'pass']
-        'challenge_block'  – ['doubt', 'pass']
-        'lose_influence'   – list[int]   índices das cartas que o jogador ainda tem
-        'reveal'           – ['reveal', 'refuse']
+        PICK_ACTION      – list[Influence]        ações disponíveis (submeter o objeto da ação)
+        PICK_TARGET      – list[int]              índices dos jogadores alvejáveis
+        DEFEND           – list[DecisionResponse] subconjunto de [BLOCK, DOUBT_ACTION, ACCEPT]
+        CHALLENGE_ACTION – [DOUBT, PASS]
+        CHALLENGE_BLOCK  – [DOUBT, PASS]
+        BLOCK_OR_PASS    – [BLOCK, PASS]
+        LOSE_INFLUENCE   – list[int]              índices das cartas que o jogador ainda tem
+        REVEAL           – [REVEAL, REFUSE]
     """
     player_index: int
-    decision_type: str
+    decision_type: DecisionType
     options: list
     context: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
+        def _ser(opt):
+            if isinstance(opt, DecisionResponse):
+                return opt.value
+            if hasattr(opt, 'get_name'):
+                return opt.get_name()
+            return opt
+
         return {
             'player_index':  self.player_index,
-            'decision_type': self.decision_type,
-            'options':       self.options,
+            'decision_type': self.decision_type.value,
+            'options':       [_ser(o) for o in self.options],
             'context':       self.context,
         }
 
