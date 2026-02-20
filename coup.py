@@ -59,12 +59,14 @@ ACCEPT_HOVER     = (180, 100, 100)
 DEFENSE_ROW_COLOR = (50,  50,  90)
 
 DOUBT_ROW_COLOR  = (80,  50,  80)
+LOSE_ROW_COLOR   = (100, 30,  30)
+REVEAL_ROW_COLOR = (40,  70,  110)
 DOUBT_COLOR      = (120, 60,  160)
 DOUBT_HOVER      = (160, 90,  210)
 PASS_COLOR       = (60,  60,  60)
 PASS_HOVER       = (90,  90,  90)
 
-ALL_ACTIONS = [Assassin(), Duke(), Countess(), Captain()]
+ALL_ACTIONS = [Assassin(), Duke(), Captain()]
 
 # --- Drawing helpers ---
 def draw_card(surface, font, x, y, influence):
@@ -83,18 +85,22 @@ def draw_button(surface, font, x, y, w, h, text, hovered, color, hover_color, bo
     surface.blit(label, (x + (w - label.get_width()) // 2, y + (h - label.get_height()) // 2))
     return rect
 
-def draw_players(surface, font, players, current_turn, pending_action, pending_defense, pending_doubt, mouse_pos):
+def draw_players(surface, font, players, current_turn, pending_action, pending_defense, pending_doubt, pending_lose_influence, pending_reveal, pending_action_challenge, mouse_pos):
     """
     Returns:
-      action_rects  — [(rect, action)]
-      target_rects  — [(rect, index)]
-      defense_rects — [(rect, 'block'|'accept')]
-      doubt_rects   — [(rect, 'doubt'|'pass')]
+      action_rects      — [(rect, action)]
+      target_rects      — [(rect, index)]
+      defense_rects     — [(rect, 'block'|'accept')]
+      doubt_rects       — [(rect, 'doubt'|'pass')]  also used for pending_action_challenge
+      card_choice_rects — [(rect, card_index)]  when pending_lose_influence is set
+      reveal_rects      — [(rect, 'reveal'|'refuse')]  when pending_reveal is set
     """
-    action_rects  = []
-    target_rects  = []
-    defense_rects = []
-    doubt_rects   = []
+    action_rects      = []
+    target_rects      = []
+    defense_rects     = []
+    doubt_rects       = []
+    card_choice_rects = []
+    reveal_rects      = []
 
     for i, player in enumerate(players):
         row_y = ROW_PAD + i * (ROW_H + ROW_PAD)
@@ -102,7 +108,17 @@ def draw_players(surface, font, players, current_turn, pending_action, pending_d
         is_targetable = pending_action and i != current_turn
 
         # Row background
-        if pending_doubt is not None:
+        if pending_reveal is not None and i == pending_reveal['challenged_player']:
+            pygame.draw.rect(surface, REVEAL_ROW_COLOR, (0, row_y, surface.get_width(), ROW_H))
+        elif pending_action_challenge is not None:
+            ac_queue = pending_action_challenge['queue']
+            if i == pending_action_challenge['actor']:
+                pygame.draw.rect(surface, ACTIVE_ROW_COLOR, (0, row_y, surface.get_width(), ROW_H))
+            elif ac_queue and i == ac_queue[0]:
+                pygame.draw.rect(surface, DOUBT_ROW_COLOR, (0, row_y, surface.get_width(), ROW_H))
+        elif pending_lose_influence is not None and i == pending_lose_influence['target']:
+            pygame.draw.rect(surface, LOSE_ROW_COLOR, (0, row_y, surface.get_width(), ROW_H))
+        elif pending_doubt is not None:
             queue = pending_doubt['queue']
             if i == pending_doubt['target']:
                 pygame.draw.rect(surface, DEFENSE_ROW_COLOR, (0, row_y, surface.get_width(), ROW_H))
@@ -132,7 +148,52 @@ def draw_players(surface, font, players, current_turn, pending_action, pending_d
 
         buttons_x = card_start_x + 2 * (CARD_W + CARD_GAP) + 20
 
-        if pending_doubt is not None:
+        if pending_reveal is not None:
+            if i == pending_reveal['challenged_player']:
+                hint = font.render(f"Provam que você tem {pending_reveal['card_name']}:", True, (180, 210, 255))
+                surface.blit(hint, (buttons_x, row_y + 5))
+                by = row_y + ROW_H // 2
+                hov = pygame.Rect(buttons_x, by, DEFENSE_W, DEFENSE_H).collidepoint(mouse_pos)
+                rect = draw_button(surface, font, buttons_x, by, DEFENSE_W, DEFENSE_H,
+                                   "Revelar", hov, BLOCK_COLOR, BLOCK_HOVER, DEFENSE_BORDER)
+                reveal_rects.append((rect, "reveal"))
+                bx2 = buttons_x + DEFENSE_W + DEFENSE_GAP
+                hov = pygame.Rect(bx2, by, DEFENSE_W, DEFENSE_H).collidepoint(mouse_pos)
+                rect = draw_button(surface, font, bx2, by, DEFENSE_W, DEFENSE_H,
+                                   "Recusar", hov, ACCEPT_COLOR, ACCEPT_HOVER, DEFENSE_BORDER)
+                reveal_rects.append((rect, "refuse"))
+
+        elif pending_action_challenge is not None:
+            ac_queue = pending_action_challenge['queue']
+            ac_actor = pending_action_challenge['actor']
+            if ac_queue and i == ac_queue[0]:
+                by = row_y + (ROW_H - DEFENSE_H) // 2
+                hov = pygame.Rect(buttons_x, by, DEFENSE_W, DEFENSE_H).collidepoint(mouse_pos)
+                rect = draw_button(surface, font, buttons_x, by, DEFENSE_W, DEFENSE_H,
+                                   "Duvidar", hov, DOUBT_COLOR, DOUBT_HOVER, DEFENSE_BORDER)
+                doubt_rects.append((rect, "doubt"))
+                bx_pass = buttons_x + DEFENSE_W + DEFENSE_GAP
+                hov = pygame.Rect(bx_pass, by, DEFENSE_W, DEFENSE_H).collidepoint(mouse_pos)
+                rect = draw_button(surface, font, bx_pass, by, DEFENSE_W, DEFENSE_H,
+                                   "Passar", hov, PASS_COLOR, PASS_HOVER, DEFENSE_BORDER)
+                doubt_rects.append((rect, "pass"))
+            elif i == ac_actor:
+                reminder = font.render("Aguardando decisão dos jogadores...", True, (200, 200, 200))
+                surface.blit(reminder, (buttons_x, row_y + (ROW_H - reminder.get_height()) // 2))
+
+        elif pending_lose_influence is not None:
+            if i == pending_lose_influence['target']:
+                reminder = font.render("Escolha uma carta para perder:", True, (255, 150, 150))
+                surface.blit(reminder, (buttons_x, row_y + 5))
+                for j, inf in enumerate(player.influences):
+                    bx = buttons_x + j * (ACTION_W + ACTION_GAP)
+                    by = row_y + ROW_H // 2
+                    hov = pygame.Rect(bx, by, ACTION_W, ACTION_H).collidepoint(mouse_pos)
+                    rect = draw_button(surface, font, bx, by, ACTION_W, ACTION_H,
+                                       inf.get_name(), hov, ACCEPT_COLOR, ACCEPT_HOVER, DEFENSE_BORDER)
+                    card_choice_rects.append((rect, j))
+
+        elif pending_doubt is not None:
             queue = pending_doubt['queue']
             if queue and i == queue[0]:
                 # Active doubter: show Duvidar / Passar
@@ -196,7 +257,7 @@ def draw_players(surface, font, players, current_turn, pending_action, pending_d
             reminder = font.render(f"Usando: {pending_action.get_name()} — escolha um alvo", True, (255, 220, 100))
             surface.blit(reminder, (buttons_x, row_y + (ROW_H - reminder.get_height()) // 2))
 
-    return action_rects, target_rects, defense_rects, doubt_rects
+    return action_rects, target_rects, defense_rects, doubt_rects, card_choice_rects, reveal_rects
 
 # --- Main ---
 pygame.init()
@@ -208,10 +269,13 @@ font = pygame.font.SysFont(None, 22)
 deck = build_deck()
 players = deal_players(["Alice", "Bob", "Carol", "Dave"], deck)
 
-current_turn   = 0
-pending_action  = None   # Influence object waiting for a target
-pending_defense = None   # (target_idx, action) waiting for defender response
-pending_doubt   = None   # {'attacker', 'target', 'action', 'queue'} waiting for doubt/pass
+current_turn          = 0
+pending_action        = None   # Influence object waiting for a target
+pending_defense       = None   # (target_idx, action) waiting for defender response
+pending_doubt         = None   # {'attacker', 'target', 'action', 'queue'} waiting for doubt/pass
+pending_lose_influence = None  # {'target': idx, 'next_turn': idx} target chooses which card to lose
+pending_reveal           = None  # {'challenged_player', 'card_name', 'context', 'attacker', 'target', 'action', 'next_turn'}
+pending_action_challenge = None  # {'actor': idx, 'action': Influence, 'queue': [idx, ...]} pre-action challenge window
 
 running = True
 while running:
@@ -222,10 +286,174 @@ while running:
             running = False
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            action_rects, target_rects, defense_rects, doubt_rects = draw_players(
-                screen, font, players, current_turn, pending_action, pending_defense, pending_doubt, mouse_pos)
+            action_rects, target_rects, defense_rects, doubt_rects, card_choice_rects, reveal_rects = draw_players(
+                screen, font, players, current_turn, pending_action, pending_defense, pending_doubt, pending_lose_influence, pending_reveal, pending_action_challenge, mouse_pos)
 
-            if pending_doubt is not None:
+            if pending_reveal is not None:
+                # Phase: challenged player decides to reveal their card or refuse
+                for rect, choice in reveal_rects:
+                    if rect.collidepoint(event.pos):
+                        ctx          = pending_reveal['context']
+                        challenged   = players[pending_reveal['challenged_player']]
+                        card_name    = pending_reveal['card_name']
+                        attacker     = players[pending_reveal['attacker']]
+                        target       = players[pending_reveal['target']]
+                        action       = pending_reveal['action']
+                        next_turn    = pending_reveal['next_turn']
+                        attacker_idx = pending_reveal['attacker']
+                        target_idx   = pending_reveal['target']
+                        doubter_idx  = pending_reveal.get('doubter', -1)
+                        pending_reveal = None
+
+                        if choice == "reveal":
+                            has_card = any(inf.get_name() == card_name for inf in challenged.influences)
+                        else:  # refuse — treated as bluff regardless of actual hand
+                            has_card = False
+
+                        if ctx == 'doubt_action':
+                            # challenged_player is the attacker
+                            if has_card:
+                                print(f"{challenged.name} revelou {card_name}! Challenge falhou. Ação executada.")
+                                if action.causes_influence_loss():
+                                    # Target loses 2 (failed challenge + assassination) — auto-eliminate
+                                    for card in list(target.influences):
+                                        print(f"{target.name} perdeu: {card.get_name()}")
+                                    target.influences.clear()
+                                    print(f"{target.name} foi eliminado!")
+                                    current_turn = next_turn
+                                else:
+                                    action.apply_effect(attacker, target)
+                                    current_turn = next_turn
+                            else:
+                                msg = "não tinha" if choice == "reveal" else "recusou revelar."
+                                print(f"{challenged.name} {msg} {card_name}. Ação cancelada.")
+                                if len(challenged.influences) <= 1:
+                                    lost = challenged.influences.pop(0)
+                                    print(f"{challenged.name} perdeu: {lost.get_name()} por blefe!")
+                                    print(f"{challenged.name} foi eliminado!")
+                                    current_turn = next_turn
+                                else:
+                                    pending_lose_influence = {'target': attacker_idx, 'next_turn': next_turn}
+
+                        elif ctx == 'doubt_block':
+                            # challenged_player is the blocker
+                            if has_card:
+                                print(f"{challenged.name} revelou {card_name}! Bloqueio mantido. {players[doubter_idx].name} perde uma carta.")
+                                doubter = players[doubter_idx]
+                                if len(doubter.influences) <= 1:
+                                    lost = doubter.influences.pop(0)
+                                    print(f"{doubter.name} perdeu: {lost.get_name()} por duvidar errado!")
+                                    if not doubter.influences:
+                                        print(f"{doubter.name} foi eliminado!")
+                                    current_turn = next_turn
+                                else:
+                                    pending_lose_influence = {'target': doubter_idx, 'next_turn': next_turn}
+                            else:
+                                msg = "não tinha" if choice == "reveal" else "recusou revelar."
+                                print(f"{challenged.name} {msg} {card_name}. Bloqueio falhou. Ação executada.")
+                                if action.causes_influence_loss():
+                                    if len(challenged.influences) <= 1:
+                                        for card in list(challenged.influences):
+                                            print(f"{challenged.name} perdeu: {card.get_name()}")
+                                        challenged.influences.clear()
+                                        print(f"{challenged.name} foi eliminado!")
+                                        current_turn = next_turn
+                                    else:
+                                        pending_lose_influence = {'target': target_idx, 'next_turn': next_turn}
+                                else:
+                                    action.apply_effect(attacker, challenged)
+                                    current_turn = next_turn
+
+                        elif ctx == 'doubt_open':
+                            # challenged_player is the actor of a non-targeted action (e.g. Duke)
+                            if has_card:
+                                print(f"{challenged.name} revelou {card_name}! Challenge falhou. Ação executada.")
+                                action.apply(challenged)
+                                print(f"{challenged.name} usou: {action.get_name()} — {action.get_description()}")
+                                doubter = players[doubter_idx]
+                                if len(doubter.influences) <= 1:
+                                    lost = doubter.influences.pop(0)
+                                    print(f"{doubter.name} perdeu: {lost.get_name()} por duvidar errado!")
+                                    if not doubter.influences:
+                                        print(f"{doubter.name} foi eliminado!")
+                                    current_turn = next_turn
+                                else:
+                                    pending_lose_influence = {'target': doubter_idx, 'next_turn': next_turn}
+                            else:
+                                msg = "não tinha" if choice == "reveal" else "recusou revelar."
+                                print(f"{challenged.name} {msg} {card_name}. Ação cancelada.")
+                                if len(challenged.influences) <= 1:
+                                    lost = challenged.influences.pop(0)
+                                    print(f"{challenged.name} perdeu: {lost.get_name()} por blefe!")
+                                    if not challenged.influences:
+                                        print(f"{challenged.name} foi eliminado!")
+                                    current_turn = next_turn
+                                else:
+                                    pending_lose_influence = {'target': attacker_idx, 'next_turn': next_turn}
+                        break
+
+            elif pending_lose_influence is not None:
+                # Phase: target chooses which influence card to lose
+                for rect, card_idx in card_choice_rects:
+                    if rect.collidepoint(event.pos):
+                        target = players[pending_lose_influence['target']]
+                        lost_card = target.influences.pop(card_idx)
+                        print(f"{target.name} perdeu: {lost_card.get_name()}")
+                        if not target.influences:
+                            print(f"{target.name} foi eliminado!")
+                        next_turn = pending_lose_influence['next_turn']
+                        pending_lose_influence = None
+                        current_turn = next_turn
+                        break
+
+            elif pending_action_challenge is not None:
+                # Pre-action challenge: other players decide to doubt or pass before the action executes
+                for rect, choice in doubt_rects:
+                    if rect.collidepoint(event.pos):
+                        actor_idx = pending_action_challenge['actor']
+                        ac_action = pending_action_challenge['action']
+                        ac_queue  = pending_action_challenge['queue']
+                        actor     = players[actor_idx]
+                        doubter_idx = ac_queue[0]
+                        doubter     = players[doubter_idx]
+
+                        if choice == "doubt":
+                            card_name = ac_action.get_name()
+                            has_card  = any(inf.get_name() == card_name for inf in actor.influences)
+                            print(f"{doubter.name} desafia {actor.name} a provar que tem {card_name}!")
+                            pending_action_challenge = None
+                            if has_card:
+                                pending_reveal = {
+                                    'challenged_player': actor_idx,
+                                    'card_name':         card_name,
+                                    'context':           'doubt_open',
+                                    'attacker':          actor_idx,
+                                    'target':            actor_idx,
+                                    'action':            ac_action,
+                                    'next_turn':         (actor_idx + 1) % len(players),
+                                    'doubter':           doubter_idx,
+                                }
+                            else:
+                                print(f"{actor.name} não tem {card_name}. Ação cancelada.")
+                                if len(actor.influences) <= 1:
+                                    lost = actor.influences.pop(0)
+                                    print(f"{actor.name} perdeu: {lost.get_name()} por blefe!")
+                                    if not actor.influences:
+                                        print(f"{actor.name} foi eliminado!")
+                                    current_turn = (actor_idx + 1) % len(players)
+                                else:
+                                    pending_lose_influence = {'target': actor_idx, 'next_turn': (actor_idx + 1) % len(players)}
+                        elif choice == "pass":
+                            ac_queue.pop(0)
+                            if not ac_queue:
+                                # Nobody doubted — execute the action
+                                ac_action.apply(actor)
+                                print(f"{actor.name} usou: {ac_action.get_name()} — {ac_action.get_description()}")
+                                pending_action_challenge = None
+                                current_turn = (actor_idx + 1) % len(players)
+                        break
+
+            elif pending_doubt is not None:
                 # Phase 4: each non-blocker decides to doubt or pass
                 for rect, choice in doubt_rects:
                     if rect.collidepoint(event.pos):
@@ -239,13 +467,35 @@ while running:
                         if choice == "doubt":
                             block_card = d_action.get_block_name()
                             has_card = any(inf.get_name() == block_card for inf in target.influences)
-                            if has_card:
-                                print(f"{doubter.name} duvidou, mas {target.name} tinha {block_card}! Bloqueio mantido.")
-                            else:
-                                print(f"{doubter.name} duvidou e estava certo! {target.name} não tinha {block_card}. Ação executada.")
-                                d_action.apply_effect(player, target)
+                            print(f"{doubter.name} desafia {target.name} a provar que tem {block_card}!")
                             pending_doubt = None
-                            current_turn = (attacker + 1) % len(players)
+                            if has_card:
+                                # Blocker has the card — let them choose to reveal or bluff
+                                pending_reveal = {
+                                    'challenged_player': target_idx,
+                                    'card_name':         block_card,
+                                    'context':           'doubt_block',
+                                    'attacker':          attacker,
+                                    'target':            target_idx,
+                                    'action':            d_action,
+                                    'next_turn':         (attacker + 1) % len(players),
+                                    'doubter':           queue[0],
+                                }
+                            else:
+                                # Blocker doesn't have the card — block fails immediately
+                                print(f"{target.name} não tem {block_card}. Bloqueio falhou. Ação executada.")
+                                if d_action.causes_influence_loss():
+                                    if len(target.influences) <= 1:
+                                        for card in list(target.influences):
+                                            print(f"{target.name} perdeu: {card.get_name()}")
+                                        target.influences.clear()
+                                        print(f"{target.name} foi eliminado!")
+                                        current_turn = (attacker + 1) % len(players)
+                                    else:
+                                        pending_lose_influence = {'target': target_idx, 'next_turn': (attacker + 1) % len(players)}
+                                else:
+                                    d_action.apply_effect(player, target)
+                                    current_turn = (attacker + 1) % len(players)
                         elif choice == "pass":
                             queue.pop(0)
                             if not queue:
@@ -263,33 +513,55 @@ while running:
                         def_action     = pending_defense[1]
                         target         = players[def_target_idx]
                         if choice == "block":
-                            # Build doubt queue: all players except the blocker, starting from attacker
-                            n     = len(players)
-                            queue = [(current_turn + k) % n for k in range(n)
-                                     if (current_turn + k) % n != def_target_idx]
+                            # Only the original attacker can doubt the block
                             pending_doubt = {
                                 'attacker': current_turn,
                                 'target':   def_target_idx,
                                 'action':   def_action,
-                                'queue':    queue,
+                                'queue':    [current_turn],
                             }
                             pending_defense = None
                         elif choice == "doubt_action":
-                            # Target doubts the attacker's claimed card
                             action_card = def_action.get_name()
                             has_card = any(inf.get_name() == action_card for inf in player.influences)
-                            if has_card:
-                                print(f"{target.name} duvidou mas {player.name} tinha {action_card}! Ação executada.")
-                                def_action.apply_effect(player, target)
-                            else:
-                                print(f"{target.name} duvidou e estava certo! {player.name} não tinha {action_card}. Ação cancelada.")
+                            print(f"{target.name} desafia {player.name} a provar que tem {action_card}!")
                             pending_defense = None
-                            current_turn = (current_turn + 1) % len(players)
+                            if has_card:
+                                # Attacker has the card — let them choose to reveal or bluff
+                                pending_reveal = {
+                                    'challenged_player': current_turn,
+                                    'card_name':         action_card,
+                                    'context':           'doubt_action',
+                                    'attacker':          current_turn,
+                                    'target':            def_target_idx,
+                                    'action':            def_action,
+                                    'next_turn':         (current_turn + 1) % len(players),
+                                }
+                            else:
+                                # Attacker doesn't have the card — directly lose an influence
+                                print(f"{player.name} não tem {action_card}. Ação cancelada.")
+                                if len(player.influences) <= 1:
+                                    lost = player.influences.pop(0)
+                                    print(f"{player.name} perdeu: {lost.get_name()} por blefe!")
+                                    print(f"{player.name} foi eliminado!")
+                                    current_turn = (current_turn + 1) % len(players)
+                                else:
+                                    pending_lose_influence = {'target': current_turn, 'next_turn': (current_turn + 1) % len(players)}
                         else:  # accept
-                            def_action.apply_effect(player, target)
                             print(f"{target.name} aceitou. {player.name} executou {def_action.get_name()} em {target.name}!")
                             pending_defense = None
-                            current_turn = (current_turn + 1) % len(players)
+                            if def_action.causes_influence_loss():
+                                if len(target.influences) <= 1:
+                                    for card in list(target.influences):
+                                        print(f"{target.name} perdeu: {card.get_name()}")
+                                    target.influences.clear()
+                                    print(f"{target.name} foi eliminado!")
+                                    current_turn = (current_turn + 1) % len(players)
+                                else:
+                                    pending_lose_influence = {'target': def_target_idx, 'next_turn': (current_turn + 1) % len(players)}
+                            else:
+                                def_action.apply_effect(player, target)
+                                current_turn = (current_turn + 1) % len(players)
                         break
 
             elif pending_action is None:
@@ -303,9 +575,15 @@ while running:
                         if action.requires_target():
                             pending_action = action
                         else:
-                            action.apply(player)
-                            print(f"{player.name} usou: {action.get_name()} — {action.get_description()}")
-                            current_turn = (current_turn + 1) % len(players)
+                            # Open challenge window for all other players before executing
+                            n = len(players)
+                            queue = [(current_turn + k) % n for k in range(1, n)]
+                            print(f"{player.name} anuncia: {action.get_name()}!")
+                            pending_action_challenge = {
+                                'actor':  current_turn,
+                                'action': action,
+                                'queue':  queue,
+                            }
                         break
 
             else:
@@ -326,7 +604,7 @@ while running:
                         break
 
     screen.fill(BG_COLOR)
-    draw_players(screen, font, players, current_turn, pending_action, pending_defense, pending_doubt, mouse_pos)
+    draw_players(screen, font, players, current_turn, pending_action, pending_defense, pending_doubt, pending_lose_influence, pending_reveal, pending_action_challenge, mouse_pos)
     pygame.display.flip()
     clock.tick(60)
 

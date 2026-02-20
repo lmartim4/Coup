@@ -31,6 +31,10 @@ class Influence(ABC):
         """Upfront cost paid when declaring the action (before defense resolves)."""
         pass
 
+    def causes_influence_loss(self) -> bool:
+        """True if this action removes an influence from the target."""
+        return False
+
     def apply_effect(self, player, target=None):
         """Effect applied when the action is not blocked."""
         pass
@@ -59,8 +63,11 @@ class Assassin(Influence):
     def apply_cost(self, player):
         player.coins -= 3
 
+    def causes_influence_loss(self) -> bool:
+        return True
+
     def apply_effect(self, player, target=None):
-        pass  # influence removal not yet implemented
+        pass  # influence removal handled by the engine (target chooses which card)
 
 
 class Duke(Influence):
