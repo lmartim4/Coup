@@ -44,6 +44,15 @@ class Renderer:
 
     TEXT_COLOR           = (255, 255, 255)
 
+    PLAYER_COLORS = [
+        (220,  80,  80),   # 0 vermelho
+        ( 80, 140, 220),   # 1 azul
+        ( 80, 200,  80),   # 2 verde
+        (220, 180,  60),   # 3 amarelo
+        (200,  80, 200),   # 4 roxo
+        ( 60, 200, 200),   # 5 ciano
+    ]
+
     ACTION_COLOR  = (70,  100, 140)
     ACTION_HOVER  = (100, 140, 190)
     TARGET_COLOR  = (140,  70,  70)
@@ -65,14 +74,13 @@ class Renderer:
     def clear(self):
         self.screen.fill(self.BG_COLOR)
 
+    def _player_color(self, idx: int) -> tuple:
+        return self.PLAYER_COLORS[idx % len(self.PLAYER_COLORS)]
+
     # ------------------------------------------------------------------ layout
 
     def _panel_height(self, player: PlayerStateView) -> int:
-        h = self.PANEL_PAD + self.INFO_H + self.CARD_ROW_H
-        if player.revealed_influences:
-            h += 18 + self.CARD_ROW_H  # separador + linha de cartas reveladas
-        h += self.PANEL_PAD
-        return h
+        return self.PANEL_PAD + self.INFO_H + self.CARD_ROW_H + self.PANEL_PAD
 
     def _seat_positions(self, n: int, viewer_idx: int, W: int, H: int) -> list:
         """
@@ -107,8 +115,9 @@ class Renderer:
         tcx = int(W * _TABLE_CX_RATIO)
         tcy = int(H * _TABLE_CY_RATIO)
 
-        # Mesa decorativa
+        # Mesa decorativa + cartas reveladas sobre ela
         self._draw_table(tcx, tcy, W, H)
+        self._draw_table_cards(state, tcx, tcy)
 
         seats = self._seat_positions(len(state.players), state.viewer_index, W, H)
 
@@ -140,16 +149,6 @@ class Renderer:
             # Cartas na mão
             hand_y = py + self.PANEL_PAD + self.INFO_H
             self._draw_hand_cards(player, px, hand_y, is_viewer)
-
-            # Cartas reveladas
-            if player.revealed_influences:
-                sep_y = hand_y + self.CARD_ROW_H
-                pygame.draw.line(self.screen, (80, 75, 110),
-                                 (px + 15, sep_y), (px + self.PANEL_W - 15, sep_y))
-                self._text("perdidas", (px + self.PANEL_W // 2 - 22, sep_y + 2),
-                           color=(140, 90, 90))
-                rev_y = sep_y + 18
-                self._draw_revealed_cards(player.revealed_influences, px, rev_y)
 
             # Indicador "decidindo…" para outros jogadores
             if (decision is not None and i == decision.player_index
@@ -192,16 +191,20 @@ class Renderer:
     # ------------------------------------------------------------------ sub-renders
 
     def _draw_table(self, cx: int, cy: int, W: int, H: int):
-        rx = int(W * 0.175)
-        ry = int(H * 0.135)
+        rx = int(W * 0.22)
+        ry = int(H * 0.17)
         rect = pygame.Rect(cx - rx, cy - ry, 2 * rx, 2 * ry)
         pygame.draw.ellipse(self.screen, self.TABLE_COLOR, rect)
         pygame.draw.ellipse(self.screen, self.TABLE_BORDER, rect, width=4)
 
     def _draw_player_info(self, player: PlayerStateView, px: int, py: int):
-        ty = py + self.PANEL_PAD
-        self._text(player.name, (px + 10, ty))
-        self._text(f"Moedas: {player.coins}", (px + 10, ty + 22),
+        ty  = py + self.PANEL_PAD
+        col = self._player_color(player.index)
+        # Bolinha colorida do jogador
+        pygame.draw.circle(self.screen, col,       (px + 13, ty + 8), 7)
+        pygame.draw.circle(self.screen, (255, 255, 255), (px + 13, ty + 8), 7, 1)
+        self._text(player.name, (px + 26, ty))
+        self._text(f"Moedas: {player.coins}", (px + 26, ty + 22),
                    color=(255, 215, 0))
         if player.is_eliminated:
             self._text("ELIMINADO",
@@ -222,13 +225,46 @@ class Renderer:
             else:
                 self._draw_card_back(cx, card_y)
 
-    def _draw_revealed_cards(self, names: list[str], px: int, card_y: int):
-        count    = len(names)
-        total_w  = count * self.CARD_W + (count - 1) * self.CARD_GAP
-        start_x  = px + (self.PANEL_W - total_w) // 2
-        for k, name in enumerate(names):
-            cx = start_x + k * (self.CARD_W + self.CARD_GAP)
-            self._draw_card_revealed(cx, card_y, name)
+    def _draw_table_cards(self, state: GameStateView, tcx: int, tcy: int):
+        """Desenha na mesa central todas as cartas reveladas (perdidas), com cor do dono."""
+        table_cards = [
+            (player.index, card_name)
+            for player in state.players
+            for card_name in player.revealed_influences
+        ]
+        if not table_cards:
+            return
+
+        TW, TH, TG = 55, 82, 8
+        MAX_ROW     = 6
+        n_rows      = (len(table_cards) + MAX_ROW - 1) // MAX_ROW
+        total_h     = n_rows * TH + (n_rows - 1) * TG
+        start_y     = tcy - total_h // 2
+
+        for row in range(n_rows):
+            row_cards = table_cards[row * MAX_ROW : (row + 1) * MAX_ROW]
+            total_w   = len(row_cards) * TW + (len(row_cards) - 1) * TG
+            start_x   = tcx - total_w // 2
+            for col, (pidx, card_name) in enumerate(row_cards):
+                x = start_x + col * (TW + TG)
+                y = start_y + row * (TH + TG)
+                self._draw_table_card(x, y, card_name, self._player_color(pidx), TW, TH)
+
+    def _draw_table_card(self, x: int, y: int, card_name: str,
+                         owner_color: tuple, w: int, h: int):
+        """Carta morta na mesa: fundo escuro com destaque na cor do dono original."""
+        rect = pygame.Rect(x, y, w, h)
+        bg   = tuple(max(0, c // 4 + 15) for c in owner_color)
+        pygame.draw.rect(self.screen, bg,          rect, border_radius=5)
+        pygame.draw.rect(self.screen, owner_color, rect, width=2, border_radius=5)
+        label = pygame.transform.rotate(
+            self.font.render(card_name, True, owner_color), 90)
+        self.screen.blit(label, (
+            x + (w - label.get_width())  // 2,
+            y + (h - label.get_height()) // 2))
+        # X na cor do dono
+        pygame.draw.line(self.screen, owner_color, (x + 4, y + 4), (x + w - 4, y + h - 4), 2)
+        pygame.draw.line(self.screen, owner_color, (x + w - 4, y + 4), (x + 4, y + h - 4), 2)
 
     # ------------------------------------------------------------------ botões por tipo de decisão
 

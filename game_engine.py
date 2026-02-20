@@ -1,3 +1,5 @@
+import random
+
 from influences import Assassin, Duke, Countess, Captain, IncomeAction, ForeignAidAction, CoupAction
 from game_agent import Player
 from game_state import (
@@ -19,8 +21,9 @@ ALL_ACTIONS = [
 
 class GameEngine:
 
-    def __init__(self, players: list[Player]):
+    def __init__(self, players: list[Player], deck: list = None):
         self.players: list[Player] = players
+        self._deck: list | None = list(deck) if deck is not None else None
         self.current_turn: int = 0
         self.pending_decision: PendingDecision | None = None
 
@@ -421,6 +424,14 @@ class GameEngine:
 
         has_card = (choice == DecisionResponse.REVEAL and
                     any(inf.get_name() == card_name for inf in challenged.influences))
+
+        # Sucesso: devolve a carta ao baralho e compra outra (regra padrão do Coup)
+        if has_card and self._deck is not None:
+            card = next(inf for inf in challenged.influences if inf.get_name() == card_name)
+            challenged.influences.remove(card)
+            self._deck.append(card)
+            random.shuffle(self._deck)
+            challenged.influences.append(self._deck.pop())
 
         if ctx == RevealContext.DOUBT_ACTION:
             # Alvo duvidou da ação do atacante
