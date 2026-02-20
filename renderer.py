@@ -1,0 +1,382 @@
+import math
+import pygame
+from game_state import GameStateView, PendingDecision, PlayerStateView
+
+# Mesa centralizada ligeiramente acima do centro da tela
+_TABLE_CX_RATIO = 0.50
+_TABLE_CY_RATIO = 0.43
+
+
+class Renderer:
+
+    # Dimensões das cartas
+    CARD_W   = 50
+    CARD_H   = 80
+    CARD_GAP = 10
+
+    # Painel por jogador
+    PANEL_W    = 280
+    INFO_H     = 44      # altura da área de texto (nome + moedas)
+    CARD_ROW_H = 95      # CARD_H + padding vertical
+    PANEL_PAD  = 12
+
+    # Botões
+    BTN_W   = 150
+    BTN_H   = 36
+    BTN_GAP = 10
+
+    # --- Paleta ---
+    BG_COLOR             = (40,  40,  60)
+    TABLE_COLOR          = (30,  75,  40)
+    TABLE_BORDER         = (20,  55,  28)
+
+    PANEL_BG             = (50,  50,  75)
+    PANEL_ACTIVE         = (55,  80,  55)
+    PANEL_DECIDING       = (75,  55, 110)
+    PANEL_ELIMINATED     = (28,  28,  38)
+    PANEL_BORDER         = (95, 100, 130)
+
+    CARD_FACE_COLOR      = (200, 170, 100)
+    CARD_BACK_COLOR      = (60,   80, 130)
+    CARD_REVEALED_COLOR  = (80,   45,  45)   # fundo da carta morta
+    CARD_BORDER          = (80,   60,  30)
+    CARD_REVEALED_BORDER = (150,  50,  50)
+
+    TEXT_COLOR           = (255, 255, 255)
+
+    ACTION_COLOR  = (70,  100, 140)
+    ACTION_HOVER  = (100, 140, 190)
+    TARGET_COLOR  = (140,  70,  70)
+    TARGET_HOVER  = (190, 110, 110)
+    BLOCK_COLOR   = (50,  110,  70)
+    BLOCK_HOVER   = (80,  150, 100)
+    DOUBT_COLOR   = (120,  60, 160)
+    DOUBT_HOVER   = (160,  90, 210)
+    ACCEPT_COLOR  = (140,  60,  60)
+    ACCEPT_HOVER  = (180, 100, 100)
+    PASS_COLOR    = (60,   60,  60)
+    PASS_HOVER    = (90,   90,  90)
+    BTN_BORDER    = (200, 200, 220)
+
+    def __init__(self, screen, font):
+        self.screen = screen
+        self.font   = font
+
+    def clear(self):
+        self.screen.fill(self.BG_COLOR)
+
+    # ------------------------------------------------------------------ layout
+
+    def _panel_height(self, player: PlayerStateView) -> int:
+        h = self.PANEL_PAD + self.INFO_H + self.CARD_ROW_H
+        if player.revealed_influences:
+            h += 18 + self.CARD_ROW_H  # separador + linha de cartas reveladas
+        h += self.PANEL_PAD
+        return h
+
+    def _seat_positions(self, n: int, viewer_idx: int, W: int, H: int) -> list:
+        """
+        Calcula a posição central do painel de cada jogador distribuindo-os
+        simetricamente ao redor de uma elipse.
+        O viewer fica sempre na posição inferior (ângulo π/2 nas coordenadas pygame).
+        """
+        tcx = W * _TABLE_CX_RATIO
+        tcy = H * _TABLE_CY_RATIO
+        rx  = W * 0.38
+        ry  = H * 0.30
+
+        positions = []
+        for i in range(n):
+            offset = (i - viewer_idx) % n
+            # π/2 = parte inferior da tela; cada jogador ocupa um arco de 2π/n
+            angle = math.pi / 2 + offset * (2 * math.pi / n)
+            x = tcx + rx * math.cos(angle)
+            y = tcy + ry * math.sin(angle)
+            positions.append((int(x), int(y)))
+        return positions
+
+    # ------------------------------------------------------------------ draw principal
+
+    def draw(self, state: GameStateView, mouse_pos: tuple) -> list:
+        clickable = []
+        W, H = self.screen.get_size()
+        decision       = state.pending_decision
+        is_my_decision = (decision is not None and
+                          decision.player_index == state.viewer_index)
+
+        tcx = int(W * _TABLE_CX_RATIO)
+        tcy = int(H * _TABLE_CY_RATIO)
+
+        # Mesa decorativa
+        self._draw_table(tcx, tcy, W, H)
+
+        seats = self._seat_positions(len(state.players), state.viewer_index, W, H)
+
+        for i, player in enumerate(state.players):
+            cx, cy   = seats[i]
+            is_viewer = (i == state.viewer_index)
+            ph        = self._panel_height(player)
+            px        = cx - self.PANEL_W // 2
+            py        = cy - ph // 2
+
+            # Fundo do painel
+            if player.is_eliminated:
+                bg = self.PANEL_ELIMINATED
+            elif decision is not None and i == decision.player_index:
+                bg = self.PANEL_DECIDING
+            elif i == state.current_turn:
+                bg = self.PANEL_ACTIVE
+            else:
+                bg = self.PANEL_BG
+
+            pygame.draw.rect(self.screen, bg,
+                             (px, py, self.PANEL_W, ph), border_radius=10)
+            pygame.draw.rect(self.screen, self.PANEL_BORDER,
+                             (px, py, self.PANEL_W, ph), width=2, border_radius=10)
+
+            # Texto de info
+            self._draw_player_info(player, px, py)
+
+            # Cartas na mão
+            hand_y = py + self.PANEL_PAD + self.INFO_H
+            self._draw_hand_cards(player, px, hand_y, is_viewer)
+
+            # Cartas reveladas
+            if player.revealed_influences:
+                sep_y = hand_y + self.CARD_ROW_H
+                pygame.draw.line(self.screen, (80, 75, 110),
+                                 (px + 15, sep_y), (px + self.PANEL_W - 15, sep_y))
+                self._text("perdidas", (px + self.PANEL_W // 2 - 22, sep_y + 2),
+                           color=(140, 90, 90))
+                rev_y = sep_y + 18
+                self._draw_revealed_cards(player.revealed_influences, px, rev_y)
+
+            # Indicador "decidindo…" para outros jogadores
+            if (decision is not None and i == decision.player_index
+                    and not is_viewer):
+                self._text("decidindo…",
+                           (cx - 32, py + ph + 6),
+                           color=(180, 180, 220))
+
+            # Botão "Selecionar" na linha de cada alvo possível
+            if (is_my_decision and decision.decision_type == 'pick_target'
+                    and i != state.viewer_index and i in decision.options):
+                bx = cx - self.BTN_W // 2
+                by = py + ph + 8
+                rect = self._btn(bx, by, self.BTN_W, self.BTN_H,
+                                 "Selecionar", mouse_pos,
+                                 self.TARGET_COLOR, self.TARGET_HOVER)
+                clickable.append((rect, i))
+
+        # Botões de decisão do viewer (acima do painel dele)
+        if is_my_decision:
+            vcx, vcy = seats[state.viewer_index]
+            vph      = self._panel_height(state.players[state.viewer_index])
+            btn_y    = vcy - vph // 2 - self.BTN_H - 14
+            btn_x    = W // 2 - 240
+
+            if decision.decision_type == 'pick_target':
+                action_name = decision.context.get('action_name', '')
+                self._text(f"Usando: {action_name} — escolha um alvo",
+                           (W // 2 - 145, btn_y + 10),
+                           color=(255, 220, 100))
+            else:
+                new = self._draw_decision_btns(decision, state, btn_x, btn_y, mouse_pos)
+                clickable.extend(new)
+
+        # Game over
+        if state.pending_decision is None:
+            self._draw_game_over(state)
+
+        return clickable
+
+    # ------------------------------------------------------------------ sub-renders
+
+    def _draw_table(self, cx: int, cy: int, W: int, H: int):
+        rx = int(W * 0.175)
+        ry = int(H * 0.135)
+        rect = pygame.Rect(cx - rx, cy - ry, 2 * rx, 2 * ry)
+        pygame.draw.ellipse(self.screen, self.TABLE_COLOR, rect)
+        pygame.draw.ellipse(self.screen, self.TABLE_BORDER, rect, width=4)
+
+    def _draw_player_info(self, player: PlayerStateView, px: int, py: int):
+        ty = py + self.PANEL_PAD
+        self._text(player.name, (px + 10, ty))
+        self._text(f"Moedas: {player.coins}", (px + 10, ty + 22),
+                   color=(255, 215, 0))
+        if player.is_eliminated:
+            self._text("ELIMINADO",
+                       (px + self.PANEL_W - 95, ty + 8),
+                       color=(255, 80, 80))
+
+    def _draw_hand_cards(self, player: PlayerStateView, px: int, card_y: int,
+                         is_viewer: bool):
+        count = player.influence_count
+        if count == 0:
+            return
+        total_w  = count * self.CARD_W + (count - 1) * self.CARD_GAP
+        start_x  = px + (self.PANEL_W - total_w) // 2
+        for j in range(count):
+            cx = start_x + j * (self.CARD_W + self.CARD_GAP)
+            if is_viewer and j < len(player.influences):
+                self._draw_card_face(cx, card_y, player.influences[j])
+            else:
+                self._draw_card_back(cx, card_y)
+
+    def _draw_revealed_cards(self, names: list[str], px: int, card_y: int):
+        count    = len(names)
+        total_w  = count * self.CARD_W + (count - 1) * self.CARD_GAP
+        start_x  = px + (self.PANEL_W - total_w) // 2
+        for k, name in enumerate(names):
+            cx = start_x + k * (self.CARD_W + self.CARD_GAP)
+            self._draw_card_revealed(cx, card_y, name)
+
+    # ------------------------------------------------------------------ botões por tipo de decisão
+
+    def _draw_decision_btns(self, decision: PendingDecision, state: GameStateView,
+                             bx: int, by: int, mouse_pos: tuple) -> list:
+        clickable = []
+        dt  = decision.decision_type
+        ctx = decision.context
+
+        if dt == 'pick_action':
+            for k, name in enumerate(decision.options):
+                x    = bx + k * (self.BTN_W + self.BTN_GAP)
+                rect = self._btn(x, by, self.BTN_W, self.BTN_H, name, mouse_pos,
+                                 self.ACTION_COLOR, self.ACTION_HOVER)
+                clickable.append((rect, name))
+
+        elif dt == 'defend':
+            hint = (f"{ctx.get('attacker_name', '')} usa "
+                    f"{ctx.get('action_name', '')}")
+            self._text(hint, (bx, by - 18), color=(255, 220, 100))
+            defs = [
+                (f"Bloquear ({ctx.get('block_card', '')})", 'block',        self.BLOCK_COLOR,  self.BLOCK_HOVER),
+                ("Duvidar ação",                            'doubt_action', self.DOUBT_COLOR,  self.DOUBT_HOVER),
+                ("Aceitar",                                 'accept',       self.ACCEPT_COLOR, self.ACCEPT_HOVER),
+            ]
+            for k, (label, key, color, hover) in enumerate(defs):
+                x    = bx + k * (self.BTN_W + self.BTN_GAP)
+                rect = self._btn(x, by, self.BTN_W, self.BTN_H, label, mouse_pos, color, hover)
+                clickable.append((rect, key))
+
+        elif dt == 'block_or_pass':
+            hint = (f"{ctx.get('actor_name', '')} anuncia "
+                    f"{ctx.get('action_name', '')}")
+            self._text(hint, (bx, by - 18), color=(255, 220, 100))
+            pairs = [
+                (f"Bloquear ({ctx.get('block_card', '')})", 'block', self.BLOCK_COLOR,  self.BLOCK_HOVER),
+                ("Passar",                                   'pass',  self.PASS_COLOR,   self.PASS_HOVER),
+            ]
+            for k, (label, key, color, hover) in enumerate(pairs):
+                x    = bx + k * (self.BTN_W + self.BTN_GAP)
+                rect = self._btn(x, by, self.BTN_W, self.BTN_H, label, mouse_pos, color, hover)
+                clickable.append((rect, key))
+
+        elif dt in ('challenge_action', 'challenge_block'):
+            if dt == 'challenge_action':
+                hint = (f"{ctx.get('actor_name', '')} anuncia "
+                        f"{ctx.get('action_name', '')}")
+            else:
+                hint = (f"{ctx.get('blocker_name', '')} bloqueia com "
+                        f"{ctx.get('block_card', '')}")
+            self._text(hint, (bx, by - 18), color=(200, 180, 255))
+            pairs = [
+                ("Duvidar", 'doubt', self.DOUBT_COLOR, self.DOUBT_HOVER),
+                ("Passar",  'pass',  self.PASS_COLOR,  self.PASS_HOVER),
+            ]
+            for k, (label, key, color, hover) in enumerate(pairs):
+                x    = bx + k * (self.BTN_W + self.BTN_GAP)
+                rect = self._btn(x, by, self.BTN_W, self.BTN_H, label, mouse_pos, color, hover)
+                clickable.append((rect, key))
+
+        elif dt == 'lose_influence':
+            self._text("Escolha uma carta para perder:", (bx, by - 18),
+                       color=(255, 150, 150))
+            viewer = next(p for p in state.players if p.index == state.viewer_index)
+            for k, card_idx in enumerate(decision.options):
+                name = (viewer.influences[card_idx]
+                        if card_idx < len(viewer.influences) else f"Carta {card_idx}")
+                x    = bx + k * (self.BTN_W + self.BTN_GAP)
+                rect = self._btn(x, by, self.BTN_W, self.BTN_H, name, mouse_pos,
+                                 self.ACCEPT_COLOR, self.ACCEPT_HOVER)
+                clickable.append((rect, card_idx))
+
+        elif dt == 'reveal':
+            self._text(f"Prove que tem {ctx.get('card_name', '')}:",
+                       (bx, by - 18), color=(180, 210, 255))
+            pairs = [
+                ("Revelar", 'reveal', self.BLOCK_COLOR,  self.BLOCK_HOVER),
+                ("Recusar", 'refuse', self.ACCEPT_COLOR, self.ACCEPT_HOVER),
+            ]
+            for k, (label, key, color, hover) in enumerate(pairs):
+                x    = bx + k * (self.BTN_W + self.BTN_GAP)
+                rect = self._btn(x, by, self.BTN_W, self.BTN_H, label, mouse_pos, color, hover)
+                clickable.append((rect, key))
+
+        return clickable
+
+    # ------------------------------------------------------------------ primitivos
+
+    def _draw_card_face(self, x: int, y: int, card_name: str):
+        rect = pygame.Rect(x, y, self.CARD_W, self.CARD_H)
+        pygame.draw.rect(self.screen, self.CARD_FACE_COLOR, rect, border_radius=6)
+        pygame.draw.rect(self.screen, self.CARD_BORDER, rect, width=2, border_radius=6)
+        label = pygame.transform.rotate(
+            self.font.render(card_name, True, (40, 40, 40)), 90)
+        self.screen.blit(label, (
+            x + (self.CARD_W - label.get_width())  // 2,
+            y + (self.CARD_H - label.get_height()) // 2))
+
+    def _draw_card_back(self, x: int, y: int):
+        rect = pygame.Rect(x, y, self.CARD_W, self.CARD_H)
+        pygame.draw.rect(self.screen, self.CARD_BACK_COLOR, rect, border_radius=6)
+        pygame.draw.rect(self.screen, self.CARD_BORDER, rect, width=2, border_radius=6)
+        label = pygame.transform.rotate(
+            self.font.render("?", True, (150, 150, 200)), 90)
+        self.screen.blit(label, (
+            x + (self.CARD_W - label.get_width())  // 2,
+            y + (self.CARD_H - label.get_height()) // 2))
+
+    def _draw_card_revealed(self, x: int, y: int, card_name: str):
+        """Carta revelada: face visível mas com visual de 'morta' (fundo escuro + X)."""
+        rect = pygame.Rect(x, y, self.CARD_W, self.CARD_H)
+        pygame.draw.rect(self.screen, self.CARD_REVEALED_COLOR, rect, border_radius=6)
+        pygame.draw.rect(self.screen, self.CARD_REVEALED_BORDER, rect, width=2, border_radius=6)
+        label = pygame.transform.rotate(
+            self.font.render(card_name, True, (200, 140, 140)), 90)
+        self.screen.blit(label, (
+            x + (self.CARD_W - label.get_width())  // 2,
+            y + (self.CARD_H - label.get_height()) // 2))
+        # X vermelho por cima
+        pygame.draw.line(self.screen, (190, 40, 40),
+                         (x + 4,  y + 4),  (x + self.CARD_W - 4, y + self.CARD_H - 4), 2)
+        pygame.draw.line(self.screen, (190, 40, 40),
+                         (x + self.CARD_W - 4, y + 4), (x + 4, y + self.CARD_H - 4), 2)
+
+    def _btn(self, x: int, y: int, w: int, h: int, text: str,
+             mouse_pos: tuple, color: tuple, hover_color: tuple) -> pygame.Rect:
+        rect    = pygame.Rect(x, y, w, h)
+        hovered = rect.collidepoint(mouse_pos)
+        pygame.draw.rect(self.screen, hover_color if hovered else color, rect, border_radius=5)
+        pygame.draw.rect(self.screen, self.BTN_BORDER, rect, width=1, border_radius=5)
+        label = self.font.render(text, True, self.TEXT_COLOR)
+        self.screen.blit(label, (
+            x + (w - label.get_width())  // 2,
+            y + (h - label.get_height()) // 2))
+        return rect
+
+    def _text(self, text: str, pos: tuple, color: tuple = None):
+        surf = self.font.render(text, True, color or self.TEXT_COLOR)
+        self.screen.blit(surf, pos)
+
+    def _draw_game_over(self, state: GameStateView):
+        alive = [p for p in state.players if not p.is_eliminated]
+        if not alive:
+            return
+        winner = alive[0].name
+        W, H   = self.screen.get_size()
+        big    = pygame.font.SysFont(None, 64)
+        surf   = big.render(f"Fim de jogo! Vencedor: {winner}", True, (255, 220, 0))
+        self.screen.blit(surf, (W // 2 - surf.get_width() // 2,
+                                H // 2 - surf.get_height() // 2))
