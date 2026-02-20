@@ -1,6 +1,84 @@
 from dataclasses import dataclass, field
-from typing import Optional
+from enum import Enum
+from typing import Any, Optional
 
+
+# ── Internal engine phases ────────────────────────────────────────────────────
+#
+# Each _phase_* attribute in GameEngine holds exactly one of these dataclasses
+# (or None). Using typed dataclasses instead of raw dicts / tuples lets the
+# code (and type-checkers) know exactly what fields to expect in each phase.
+
+class RevealContext(str, Enum):
+    """Why a player is being asked to reveal (or refuse) a card."""
+    DOUBT_ACTION = 'doubt_action'  # defender doubted the attacker's claimed card
+    DOUBT_BLOCK  = 'doubt_block'   # attacker doubted the blocker's claimed card
+    DOUBT_OPEN   = 'doubt_open'    # a bystander doubted a non-targeted action (e.g. Duke)
+
+
+@dataclass
+class PhaseAction:
+    """Current player picked an action that needs a target — waiting for target."""
+    action: Any  # Influence
+
+
+@dataclass
+class PhaseDefense:
+    """Target player must decide how to react to an incoming action."""
+    target_idx: int
+    action: Any  # Influence
+
+
+@dataclass
+class PhaseChallenge:
+    """Other players can doubt an announced card-action (e.g. Duke tax).
+    queue: remaining player indices that haven't passed yet."""
+    actor: int
+    action: Any  # Influence
+    queue: list[int]
+
+
+@dataclass
+class PhaseDoubtBlock:
+    """Players can challenge a claimed block.
+    queue: remaining player indices that haven't passed yet."""
+    attacker: int
+    target: int   # the blocker
+    action: Any   # Influence (the original action being blocked)
+    queue: list[int]
+
+
+@dataclass
+class PhaseBlockOpen:
+    """Any player may block an open action (e.g. Foreign Aid → Duke).
+    queue: remaining player indices that haven't passed yet."""
+    actor: int
+    action: Any   # Influence
+    queue: list[int]
+
+
+@dataclass
+class PhaseLoseInfluence:
+    """A player must discard one of their influence cards."""
+    target_idx: int
+    next_turn: int
+
+
+@dataclass
+class PhaseReveal:
+    """A challenged player must show (or refuse to show) the claimed card.
+    doubter is None only when context == RevealContext.DOUBT_ACTION."""
+    challenged_player: int
+    card_name: str
+    context: RevealContext
+    attacker: int
+    target: int
+    action: Any  # Influence
+    next_turn: int
+    doubter: Optional[int] = None
+
+
+# ── Public game-state views ───────────────────────────────────────────────────
 
 @dataclass
 class PlayerStateView:

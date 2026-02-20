@@ -30,10 +30,10 @@ class Game:
         self.renderer = Renderer(screen, self.font)
 
         deck    = self._build_deck()
-        players = self._deal_players(["Eu", "Bot 1", "Bot 2"], deck)
+        players = self._deal_players(["Eu", "Diego", "Contente", "Lucas"], deck)
 
         self.engine      = GameEngine(players)
-        self.bot_agents  = {1: BotAgent("Bot 1"),2: BotAgent("Bot 2")}  # índice → agente
+        self.bot_agents  = {1: BotAgent("Diego"),2: BotAgent("Contente"),3: BotAgent("Lucas")}  # índice → agente
 
         # Rects clicáveis do último frame: [(pygame.Rect, choice)]
         self._clickable: list = []
