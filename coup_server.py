@@ -84,9 +84,6 @@ class GameServer:
         # For programmatic start (solo / host modes)
         self._auto_start = auto_start
         self._server_loop: asyncio.AbstractEventLoop | None = None
-
-        # Game state (populated in start_game)
-        self._engine: GameEngine | None = None
         self._bot_agents: dict[int, BotAgent] = {}
         # player_index → asyncio.Queue (receives raw choice values from clients)
         self._human_queues: dict[int, asyncio.Queue] = {}
@@ -138,6 +135,7 @@ class GameServer:
             state_view = self._engine.get_state_view(decision.player_index)
             choice = agent.decide(state_view, decision)
             pname = self._engine.players[decision.player_index].name
+            await asyncio.sleep(random.uniform(0.5, 5.0))
             print(f"  [{pname}] {decision.decision_type.value} → "
                   f"{choice.get_name() if hasattr(choice, 'get_name') else choice}")
             self._engine.submit_decision(choice)
@@ -355,7 +353,7 @@ async def _run_server_async(game_server: "GameServer") -> None:
         await server.serve_forever()
 
 
-def run_server_in_thread(auto_start: bool = False) -> "GameServer":
+def run_server_in_thread(auto_start: bool = False) -> GameServer:
     """Start the game server in a background daemon thread. Returns the GameServer."""
     gs = GameServer(auto_start=auto_start)
 

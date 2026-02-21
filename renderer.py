@@ -312,12 +312,10 @@ class Renderer:
             hand_y = py + self.PANEL_PAD + self.INFO_H
             self._draw_hand_cards(player, px, hand_y, is_viewer)
 
-            # Indicador "decidindo…" para outros jogadores
+            # Thinking indicator for other deciding players
             if (decision is not None and i == decision.player_index
                     and not is_viewer):
-                self._text("decidindo…",
-                           (cx - 32, py + ph + 6),
-                           color=(180, 180, 220))
+                self._draw_thinking_dots(cx, py + ph + 14)
 
             # Botão "Selecionar" na linha de cada alvo possível
             if (is_my_decision and decision.decision_type == DecisionType.PICK_TARGET
@@ -581,6 +579,28 @@ class Renderer:
     def _text(self, text: str, pos: tuple[int, int], color: tuple[int, int, int] | None = None) -> None:
         surf = self.font.render(text, True, color or self.TEXT_COLOR)
         self.screen.blit(surf, pos)
+
+    # ------------------------------------------------------------------ thinking dots
+
+    def _draw_thinking_dots(self, cx: int, y: int):
+        """Animated three-dot thinking indicator below a player panel."""
+        t            = pygame.time.get_ticks()
+        dot_r        = 5
+        dot_spacing  = 16
+        cycle_ms     = 600   # time for one dot to complete a full pulse
+        for k in range(3):
+            # each dot is offset by 1/3 of the cycle
+            phase = ((t / cycle_ms) - k / 3.0) % 1.0
+            # brightness: ramp up then down (triangle wave)
+            brightness = 1.0 - abs(phase * 2 - 1.0)
+            alpha = int(60 + 195 * brightness)
+            color = (
+                int(180 * alpha // 255),
+                int(180 * alpha // 255),
+                min(255, int(220 * alpha // 255)),
+            )
+            dx = cx + (k - 1) * dot_spacing
+            pygame.draw.circle(self.screen, color, (dx, y), dot_r)
 
     # ------------------------------------------------------------------ speech bubbles
 

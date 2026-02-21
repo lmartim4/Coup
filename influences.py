@@ -34,8 +34,6 @@ class Influence(ABC):
         """Influence types that can block this card's action. Empty = unblockable."""
         return []
 
-    # --- Delegation to action (keeps coup.py interface unchanged) ---
-
     def requires_target(self) -> bool:
         action = self.get_action()
         return action.requires_target() if action else False
@@ -47,10 +45,10 @@ class Influence(ABC):
     def has_defense(self) -> bool:
         return bool(self.get_blockers())
 
-    def get_block_name(self) -> str | None:
+    def get_block_name(self) -> str:
         """Derived from get_blockers() for backward compatibility with the engine."""
         blockers = self.get_blockers()
-        return blockers[0]().get_name() if blockers else None
+        return blockers[0]().get_name() if blockers else ''
 
     def apply(self, player: Player, target: Player | None = None) -> None:
         action = self.get_action()

@@ -124,7 +124,7 @@ class CoupGame:
 
         if screen is None:
             pygame.init()
-            screen = pygame.display.set_mode((1280, 720))
+            screen = pygame.display.set_mode((1280, 720), pygame.RESIZABLE)
         pygame.display.set_caption(f"Coup – {player_name}")
         self.screen = screen
         self.clock  = clock if clock is not None else pygame.time.Clock()
@@ -162,6 +162,9 @@ class CoupGame:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
+                elif event.type == pygame.WINDOWRESIZED:
+                    self.screen = pygame.display.get_surface()
+                    self.renderer.screen = self.screen
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     self._handle_click(event.pos)
 
@@ -402,7 +405,7 @@ if __name__ == "__main__":
     from coup_server import run_server_in_thread
 
     pygame.init()
-    screen = pygame.display.set_mode((1280, 720))
+    screen = pygame.display.set_mode((1280, 720), pygame.RESIZABLE)
     pygame.display.set_caption("Coup")
     clock = pygame.time.Clock()
 

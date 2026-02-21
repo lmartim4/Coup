@@ -76,6 +76,9 @@ class TitleScreen:
                     pygame.quit()
                     raise SystemExit
 
+                elif event.type == pygame.WINDOWRESIZED:
+                    self.screen = pygame.display.get_surface()
+
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     result = self._on_click(event.pos, mouse)
                     if result is not None:
