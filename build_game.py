@@ -8,7 +8,7 @@ import platform
 # ================= CONFIGURAÇÕES =================
 GAME_SCRIPT = "coup_game.py"  # Nome do seu script principal
 APP_NAME = "CoupGame"         # Nome do executável final
-VERSION = "v1.0.0"            # Mude isso a cada atualização!
+VERSION = os.environ.get("RELEASE_VERSION", "v1.0.0")  # Lido da tag do git na CI, ou padrão local
 OUTPUT_DIR = "build_output"   # Onde os arquivos finais ficarão
 ASSETS_DIR = "assets"         # Pasta de imagens/sons (se tiver, deixe None se não tiver)
 # =================================================
@@ -35,6 +35,7 @@ def compile_game():
         '--onedir',  # Cria uma pasta (melhor para atualizações do que um único arquivo gigante)
         '--clean',
         '--noconsole',  # Remove a tela preta (ative se precisar debugar erros)
+        '--icon=coup.ico',
     ]
 
     # Se tiver assets, inclui no comando
@@ -71,11 +72,12 @@ def package_release():
                     arcname = os.path.relpath(file_path, start="dist")
                     zipf.write(file_path, arcname)
 
-    elif os_name == "Linux":
-        archive_name = f"{APP_NAME}-Linux-{VERSION}.tar.gz"
+    elif os_name in ("Linux", "Darwin"):
+        platform_name = "macOS" if os_name == "Darwin" else "Linux"
+        archive_name = f"{APP_NAME}-{platform_name}-{VERSION}.tar.gz"
         archive_path = os.path.join(OUTPUT_DIR, archive_name)
-        
-        print(f"Criando TAR.GZ para Linux: {archive_name}")
+
+        print(f"Criando TAR.GZ para {platform_name}: {archive_name}")
         with tarfile.open(archive_path, "w:gz") as tar:
             tar.add(dist_folder, arcname=APP_NAME)
 

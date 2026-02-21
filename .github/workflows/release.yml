@@ -3,44 +3,46 @@ name: Build and Release Coup
 on:
   push:
     tags:
-      - 'v*' # Só roda quando você enviar uma tag que comece com "v" (ex: v1.0.0)
+      - 'v*' # Runs when you push a tag starting with "v" (e.g. v1.2.0)
 
 jobs:
-  build-and-release:
+  build:
     name: Build on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    
+
     strategy:
       matrix:
-        os: [windows-latest, ubuntu-latest]
+        os: [windows-latest, ubuntu-latest, macos-latest]
 
     steps:
-      # 1. Baixa o código do seu repositório para o servidor do GitHub
+      # 1. Check out the repository
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # 2. Instala o Python no servidor do GitHub
+      # 2. Install Python
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11' # Pode mudar para a versão que você usa no seu PC
+          python-version: '3.13'
 
-      # 3. Instala o PyInstaller e qualquer outra dependência do seu jogo
+      # 3. Install PyInstaller and game dependencies
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pyinstaller
-          # IMPORTANTE: Se o seu jogo usa outras bibliotecas (ex: pygame, requests), adicione aqui!
-          # pip install pygame requests
+          pip install pyinstaller pillow
+          pip install -r requirements.txt
 
-      # 4. Roda o nosso script mágico de compilação
+      # 4. Build the game (version is taken from the git tag)
       - name: Build Game
         run: python build_game.py
+        env:
+          RELEASE_VERSION: ${{ github.ref_name }}
 
-      # 5. Pega os arquivos da pasta build_output e anexa na Release oficial do GitHub
+      # 5. Upload the built archive to the GitHub Release
       - name: Upload to Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
-          files: build_output/* # Pega tudo que estiver dentro da pasta de saída
+          files: build_output/*
+          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
