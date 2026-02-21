@@ -26,6 +26,7 @@ import asyncio
 import json
 import random
 import sys
+import threading
 
 from game_engine import GameEngine
 from game_agent import Player, BotAgent
@@ -71,13 +72,17 @@ def _deserialize_choice(choice_raw, decision):
 
 class GameServer:
 
-    def __init__(self):
+    def __init__(self, auto_start: bool = False):
         # Lobby state
         self._lobby_lock = asyncio.Lock()
         # list of (name, writer) for each connected human in lobby order
         self._lobby_clients: list[tuple[str, asyncio.StreamWriter]] = []
         self._start_event = asyncio.Event()
         self._game_started = False
+
+        # For programmatic start (solo / host modes)
+        self._auto_start = auto_start
+        self._server_loop: asyncio.AbstractEventLoop | None = None
 
         # Game state (populated in start_game)
         self._engine: GameEngine | None = None
@@ -115,12 +120,19 @@ class GameServer:
             except Exception:
                 pass
 
-    def _tick_bots(self) -> None:
-        """Advance the engine through all consecutive bot decisions."""
+    async def _tick_bots(self) -> None:
+        """Advance the engine through consecutive bot decisions.
+
+        Broadcasts the current state *before* each bot acts so that clients
+        see every announcement phase (e.g. CHALLENGE_ACTION, PICK_TARGET)
+        and can display speech-bubble animations for them.
+        """
         while True:
             decision = self._engine.pending_decision
             if decision is None or decision.player_index in self._human_queues:
                 break
+            # Broadcast the announcement state before the bot responds to it.
+            await self._send_state_to_all()
             agent = self._bot_agents[decision.player_index]
             state_view = self._engine.get_state_view(decision.player_index)
             choice = agent.decide(state_view, decision)
@@ -131,7 +143,7 @@ class GameServer:
 
     async def _game_loop(self) -> None:
         """Main game loop: drives decisions and broadcasts state after each move."""
-        self._tick_bots()
+        await self._tick_bots()
         await self._send_state_to_all()
 
         while True:
@@ -144,7 +156,7 @@ class GameServer:
             pidx = decision.player_index
             if pidx not in self._human_queues:
                 # Shouldn't happen after _tick_bots, but guard anyway
-                self._tick_bots()
+                await self._tick_bots()
                 await self._send_state_to_all()
                 continue
 
@@ -161,7 +173,7 @@ class GameServer:
             print(f"  [{pname}] {decision.decision_type.value} → "
                   f"{choice.get_name() if hasattr(choice, 'get_name') else choice}")
             self._engine.submit_decision(choice)
-            self._tick_bots()
+            await self._tick_bots()
             await self._send_state_to_all()
 
     # ── client connection handler ──────────────────────────────────────────────
@@ -214,6 +226,10 @@ class GameServer:
             print(f"[Lobby] '{name}' joined. ({n}/{MAX_PLAYERS} players)")
             await self._broadcast_lobby()
 
+        # Auto-start for solo mode (first human joining triggers the game)
+        if self._auto_start and not self._game_started:
+            asyncio.create_task(self.start_game())
+
         # ── Step 3: wait for game start ────────────────────────────────────
         await self._start_event.wait()
 
@@ -246,9 +262,24 @@ class GameServer:
 
     # ── game setup ─────────────────────────────────────────────────────────────
 
+    # ── programmatic start helpers ─────────────────────────────────────────────
+
+    def request_start_threadsafe(self) -> None:
+        """Call from any thread to request game start (host button, etc.)."""
+        if self._server_loop is not None and not self._game_started:
+            asyncio.run_coroutine_threadsafe(self._do_start(), self._server_loop)
+
+    async def _do_start(self) -> None:
+        if not self._game_started and self._lobby_clients:
+            await self.start_game()
+
+    # ── game setup ─────────────────────────────────────────────────────────────
+
     async def start_game(self) -> None:
         """Build the game, assign indices, and start the game loop."""
         async with self._lobby_lock:
+            if self._game_started:
+                return  # guard against double-start
             self._game_started = True
 
         human_names = [n for n, _ in self._lobby_clients]
@@ -306,6 +337,33 @@ async def _console_loop(game_server: GameServer) -> None:
                 continue
             await game_server.start_game()
             break
+
+
+# ── in-process server helpers (for title-screen solo/host modes) ──────────────
+
+async def _run_server_async(game_server: "GameServer") -> None:
+    """Coroutine used by run_server_in_thread – no console loop."""
+    game_server._server_loop = asyncio.get_running_loop()
+
+    async def _handler(reader, writer):
+        await game_server.handle_client(reader, writer)
+
+    server = await asyncio.start_server(_handler, HOST, PORT)
+    print(f"[Server] Coup server listening on {HOST}:{PORT}")
+    async with server:
+        await server.serve_forever()
+
+
+def run_server_in_thread(auto_start: bool = False) -> "GameServer":
+    """Start the game server in a background daemon thread. Returns the GameServer."""
+    gs = GameServer(auto_start=auto_start)
+
+    def _thread():
+        asyncio.run(_run_server_async(gs))
+
+    t = threading.Thread(target=_thread, daemon=True)
+    t.start()
+    return gs
 
 
 # ── main ──────────────────────────────────────────────────────────────────────

@@ -97,6 +97,7 @@ class GameEngine:
                 context={
                     'action_name': ch.action.get_name(),
                     'actor_name':  self.players[ch.actor].name,
+                    'actor_idx':   ch.actor,
                 },
             )
 
@@ -109,6 +110,7 @@ class GameEngine:
                 context={
                     'block_card':   db.action.get_block_name(),
                     'blocker_name': self.players[db.target].name,
+                    'blocker_idx':  db.target,
                     'action_name':  db.action.get_name(),
                 },
             )
@@ -123,6 +125,7 @@ class GameEngine:
                     'action_name': bo.action.get_name(),
                     'block_card':  bo.action.get_block_name(),
                     'actor_name':  self.players[bo.actor].name,
+                    'actor_idx':   bo.actor,
                 },
             )
 

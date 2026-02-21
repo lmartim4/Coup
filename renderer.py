@@ -2,6 +2,164 @@ import math
 import pygame
 from game_state import GameStateView, PendingDecision, PlayerStateView, DecisionType, DecisionResponse
 
+
+# ── helpers ───────────────────────────────────────────────────────────────────
+
+def _elastic_out(t: float) -> float:
+    """Elastic ease-out: fast grow with a slight bounce overshoot."""
+    if t <= 0:
+        return 0.0
+    if t >= 1:
+        return 1.0
+    return math.pow(2, -10 * t) * math.sin((t * 10 - 0.75) * (2 * math.pi / 3)) + 1
+
+
+# ── SpeechBubble ──────────────────────────────────────────────────────────────
+
+class SpeechBubble:
+    """Comic-book style animated speech bubble tied to a player panel."""
+
+    POPUP_MS   = 280
+    DISPLAY_MS = 2200
+    FADEOUT_MS = 400
+
+    PAD_X  = 12
+    PAD_Y  = 9
+    RADIUS = 14
+    TAIL_W = 12   # half-width of tail base
+    TAIL_H = 16   # length of tail triangle
+    BORDER = 3
+
+    BG_COLOR     = (255, 252, 220)
+    BORDER_COLOR = (25,  20,  20)
+
+    def __init__(self, text: str, anchor_x: int, anchor_y: int,
+                 tail_dir: str, color: tuple) -> None:
+        """
+        anchor_x/y : pixel position of the tail tip (the panel edge the bubble points at).
+        tail_dir   : 'up' | 'down' | 'left' | 'right' — direction the tail points.
+        color      : player colour used for the bubble text.
+        """
+        self.text     = text
+        self.anchor_x = anchor_x
+        self.anchor_y = anchor_y
+        self.tail_dir = tail_dir
+        self.color    = color
+        self._start   = pygame.time.get_ticks()
+        self.done     = False
+
+    # ── animation ──────────────────────────────────────────────────────────
+
+    def _anim(self) -> tuple[float, int]:
+        elapsed = pygame.time.get_ticks() - self._start
+        total   = self.POPUP_MS + self.DISPLAY_MS + self.FADEOUT_MS
+        if elapsed >= total:
+            self.done = True
+            return 1.0, 0
+        if elapsed < self.POPUP_MS:
+            scale = _elastic_out(elapsed / self.POPUP_MS)
+            alpha = 255
+        elif elapsed < self.POPUP_MS + self.DISPLAY_MS:
+            scale, alpha = 1.0, 255
+        else:
+            t     = (elapsed - self.POPUP_MS - self.DISPLAY_MS) / self.FADEOUT_MS
+            scale = 1.0
+            alpha = int(255 * (1 - t))
+        return scale, alpha
+
+    # ── drawing ─────────────────────────────────────────────────────────────
+
+    def draw(self, surface: pygame.Surface, font: pygame.font.Font) -> None:
+        scale, alpha = self._anim()
+        if alpha <= 0 or scale < 0.05:
+            return
+
+        lbl    = font.render(self.text, True, self.color)
+        tw, th = lbl.get_size()
+
+        bw  = max(80, tw + self.PAD_X * 2)
+        bh  = th + self.PAD_Y * 2
+        sbw = max(8, int(bw * scale))
+        sbh = max(8, int(bh * scale))
+
+        B  = self.BORDER
+        R  = max(4, int(self.RADIUS * scale))
+        TW = max(4, int(self.TAIL_W * scale))
+        TH = max(4, int(self.TAIL_H * scale))
+
+        bg_a = (*self.BG_COLOR,     alpha)
+        bd_a = (*self.BORDER_COLOR, alpha)
+
+        # ── geometry (surface size + key points) per direction ──────────
+        if self.tail_dir == 'down':
+            sw, sh = sbw + B * 2, sbh + TH + B * 2
+            s      = pygame.Surface((sw, sh), pygame.SRCALPHA)
+            body   = pygame.Rect(B, B, sbw, sbh)
+            tx     = sw // 2
+            o_tail = [(tx - TW - B, body.bottom), (tx + TW + B, body.bottom), (tx, sh - 1)]
+            i_tail = [(tx - TW,     body.bottom - 1), (tx + TW,     body.bottom - 1), (tx, sh - B - 1)]
+            blit_x = self.anchor_x - sw // 2
+            blit_y = self.anchor_y - sh
+
+        elif self.tail_dir == 'up':
+            sw, sh = sbw + B * 2, sbh + TH + B * 2
+            s      = pygame.Surface((sw, sh), pygame.SRCALPHA)
+            body   = pygame.Rect(B, TH + B, sbw, sbh)
+            tx     = sw // 2
+            o_tail = [(tx, 0), (tx - TW - B, body.top), (tx + TW + B, body.top)]
+            i_tail = [(tx, B), (tx - TW,     body.top + 1), (tx + TW,     body.top + 1)]
+            blit_x = self.anchor_x - sw // 2
+            blit_y = self.anchor_y
+
+        elif self.tail_dir == 'right':
+            sw, sh = sbw + TH + B * 2, sbh + B * 2
+            s      = pygame.Surface((sw, sh), pygame.SRCALPHA)
+            body   = pygame.Rect(B, B, sbw, sbh)
+            ty     = sh // 2
+            o_tail = [(body.right, ty - TW - B), (body.right, ty + TW + B), (sw - 1, ty)]
+            i_tail = [(body.right - 1, ty - TW), (body.right - 1, ty + TW), (sw - B - 1, ty)]
+            blit_x = self.anchor_x - sw
+            blit_y = self.anchor_y - sh // 2
+
+        else:  # 'left'
+            sw, sh = sbw + TH + B * 2, sbh + B * 2
+            s      = pygame.Surface((sw, sh), pygame.SRCALPHA)
+            body   = pygame.Rect(TH + B, B, sbw, sbh)
+            ty     = sh // 2
+            o_tail = [(0, ty), (body.left, ty - TW - B), (body.left, ty + TW + B)]
+            i_tail = [(B, ty), (body.left + 1, ty - TW), (body.left + 1, ty + TW)]
+            blit_x = self.anchor_x
+            blit_y = self.anchor_y - sh // 2
+
+        # ── draw border layer ──────────────────────────────────────────
+        outer_body = body.inflate(B * 2, B * 2)
+        pygame.draw.rect(s,    bd_a, outer_body, border_radius=R + B)
+        pygame.draw.polygon(s, bd_a, o_tail)
+
+        # ── draw fill layer ────────────────────────────────────────────
+        pygame.draw.rect(s,    bg_a, body, border_radius=R)
+        pygame.draw.polygon(s, bg_a, i_tail)
+
+        # cover the seam between body fill and tail fill
+        if self.tail_dir == 'down':
+            seam = pygame.Rect(tx - TW, body.bottom - 1, TW * 2, 2)
+        elif self.tail_dir == 'up':
+            seam = pygame.Rect(tx - TW, body.top - 1, TW * 2, 2)
+        elif self.tail_dir == 'right':
+            seam = pygame.Rect(body.right - 1, ty - TW, 2, TW * 2)
+        else:
+            seam = pygame.Rect(body.left - 1, ty - TW, 2, TW * 2)
+        pygame.draw.rect(s, bg_a, seam)
+
+        # ── draw text ──────────────────────────────────────────────────
+        stw = max(1, int(tw * scale))
+        sth = max(1, int(th * scale))
+        ls  = pygame.transform.smoothscale(lbl, (stw, sth))
+        ls.set_alpha(alpha)
+        s.blit(ls, (body.x + (sbw - stw) // 2, body.y + (sbh - sth) // 2))
+
+        surface.blit(s, (blit_x, blit_y))
+
 # Mesa centralizada no centro da tela
 _TABLE_CX_RATIO = 0.50
 _TABLE_CY_RATIO = 0.50
@@ -68,8 +226,10 @@ class Renderer:
     BTN_BORDER    = (200, 200, 220)
 
     def __init__(self, screen, font):
-        self.screen = screen
-        self.font   = font
+        self.screen       = screen
+        self.font         = font
+        self._bubble_font = pygame.font.SysFont(None, 22, bold=True)
+        self._bubbles: list[SpeechBubble] = []
 
     def clear(self):
         self.screen.fill(self.BG_COLOR)
@@ -181,6 +341,9 @@ class Renderer:
             else:
                 new = self._draw_decision_btns(decision, state, btn_y, mouse_pos)
                 clickable.extend(new)
+
+        # Speech bubbles (drawn on top of everything)
+        self._draw_bubbles()
 
         # Game over
         if state.pending_decision is None:
@@ -415,6 +578,48 @@ class Renderer:
     def _text(self, text: str, pos: tuple, color: tuple = None):
         surf = self.font.render(text, True, color or self.TEXT_COLOR)
         self.screen.blit(surf, pos)
+
+    # ------------------------------------------------------------------ speech bubbles
+
+    def add_bubble(self, text: str, player_idx: int, state: GameStateView) -> None:
+        """Spawn a comic speech bubble near player_idx's panel."""
+        W, H  = self.screen.get_size()
+        seats = self._seat_positions(len(state.players), state.viewer_index, W, H)
+        if player_idx >= len(seats):
+            return
+
+        cx, cy = seats[player_idx]
+        ph     = self._panel_height(state.players[player_idx])
+        scx    = W // 2
+        scy    = H // 2
+
+        dx = cx - scx
+        dy = cy - scy
+
+        if abs(dy) >= abs(dx):
+            if dy >= 0:          # player in lower half → bubble above panel
+                tail_dir = 'down'
+                ax, ay   = cx, cy - ph // 2
+            else:                # player in upper half → bubble below panel
+                tail_dir = 'up'
+                ax, ay   = cx, cy + ph // 2
+        else:
+            if dx >= 0:          # player on right → bubble to the right, tail ←
+                tail_dir = 'left'
+                ax, ay   = cx + self.PANEL_W // 2 + self.PANEL_PAD, cy
+            else:                # player on left  → bubble to the left,  tail →
+                tail_dir = 'right'
+                ax, ay   = cx - self.PANEL_W // 2 - self.PANEL_PAD, cy
+
+        color = self._player_color(player_idx)
+        self._bubbles.append(SpeechBubble(text, ax, ay, tail_dir, color))
+
+    def _draw_bubbles(self) -> None:
+        self._bubbles = [b for b in self._bubbles if not b.done]
+        for b in self._bubbles:
+            b.draw(self.screen, self._bubble_font)
+
+    # ------------------------------------------------------------------ game over
 
     def _draw_game_over(self, state: GameStateView):
         alive = [p for p in state.players if not p.is_eliminated]
