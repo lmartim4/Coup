@@ -5,6 +5,41 @@ import queue
 import sys
 import threading
 from typing import Any, List, Optional, Tuple, Union
+from pathlib import Path
+
+
+def _configure_graphics():
+    """
+    Smart graphics configuration for PyInstaller bundles.
+    Only falls back to software rendering if OpenGL drivers are unavailable.
+    """
+    # Only relevant for PyInstaller bundles on Linux
+    if not (sys.platform.startswith('linux') and getattr(sys, '_MEIPASS', None)):
+        return
+
+    # Check if OpenGL/Mesa drivers are available in common system paths
+    driver_paths = [
+        '/usr/lib/dri',
+        '/usr/lib/x86_64-linux-gnu/dri',
+        '/usr/lib64/dri',
+    ]
+
+    # Look for any .so driver files (iris, swrast, etc.)
+    drivers_found = False
+    for driver_path in driver_paths:
+        path = Path(driver_path)
+        if path.exists() and any(path.glob('*.so')):
+            drivers_found = True
+            break
+
+    if not drivers_found:
+        # No OpenGL drivers found, fall back to software rendering
+        os.environ['LIBGL_ALWAYS_SOFTWARE'] = '1'
+        os.environ['SDL_VIDEODRIVER'] = 'x11'
+
+
+_configure_graphics()
+
 import pygame
 from renderer import Renderer
 from game_state import (
