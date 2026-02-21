@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
+from typing import List, Optional
 
 from influences import Influence
 
@@ -50,7 +50,7 @@ class PhaseChallenge:
     queue: remaining player indices that haven't passed yet."""
     actor: int
     action: Influence
-    queue: list[int]
+    queue: List[int]
 
 
 @dataclass
@@ -60,7 +60,7 @@ class PhaseDoubtBlock:
     attacker: int
     target: int   # the blocker
     action: Influence  # the original action being blocked
-    queue: list[int]
+    queue: List[int]
 
 
 @dataclass
@@ -69,7 +69,7 @@ class PhaseBlockOpen:
     queue: remaining player indices that haven't passed yet."""
     actor: int
     action: Influence
-    queue: list[int]
+    queue: List[int]
 
 
 @dataclass
@@ -106,8 +106,8 @@ class PlayerStateView:
     name: str
     coins: int
     influence_count: int       # visível a todos
-    influences: list[str]      # nomes das cartas na mão — só para o próprio jogador
-    revealed_influences: list[str]  # cartas reveladas (viradas na mesa) — visíveis a todos
+    influences: List[str]      # nomes das cartas na mão — só para o próprio jogador
+    revealed_influences: List[str]  # cartas reveladas (viradas na mesa) — visíveis a todos
     is_eliminated: bool
 
     def to_dict(self) -> dict:
@@ -128,13 +128,13 @@ class PendingDecision:
     Decisão que um jogador específico precisa tomar agora.
 
     decision_type / options:
-        PICK_ACTION      – list[Influence]        ações disponíveis (submeter o objeto da ação)
-        PICK_TARGET      – list[int]              índices dos jogadores alvejáveis
-        DEFEND           – list[DecisionResponse] subconjunto de [BLOCK, DOUBT_ACTION, ACCEPT]
+        PICK_ACTION      – List[Influence]        ações disponíveis (submeter o objeto da ação)
+        PICK_TARGET      – List[int]              índices dos jogadores alvejáveis
+        DEFEND           – List[DecisionResponse] subconjunto de [BLOCK, DOUBT_ACTION, ACCEPT]
         CHALLENGE_ACTION – [DOUBT, PASS]
         CHALLENGE_BLOCK  – [DOUBT, PASS]
         BLOCK_OR_PASS    – [BLOCK, PASS]
-        LOSE_INFLUENCE   – list[int]              índices das cartas que o jogador ainda tem
+        LOSE_INFLUENCE   – List[int]              índices das cartas que o jogador ainda tem
         REVEAL           – [REVEAL, REFUSE]
     """
     player_index: int
@@ -164,7 +164,7 @@ class GameStateView:
     Estado serializado do jogo do ponto de vista de um jogador específico.
     Pode ser convertido para dict e enviado via rede no futuro.
     """
-    players: list[PlayerStateView]
+    players: List[PlayerStateView]
     current_turn: int
     pending_decision: Optional[PendingDecision]
     viewer_index: int

@@ -1,7 +1,7 @@
 import random
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Optional
+from typing import List, Optional
 
 from game_state import GameStateView, PendingDecision, DecisionType, DecisionResponse
 from influences import CARD_VALUE
@@ -64,7 +64,7 @@ class BotAgent(PlayerAgent):
         self.personality = personality if personality is not None else BotPersonality.random()
         print(f"  [Bot] {name}: {self.personality}")
 
-    def _my_cards(self, state: GameStateView) -> list[str]:
+    def _my_cards(self, state: GameStateView) -> List[str]:
         return list(state.players[state.viewer_index].influences)
 
     def _has_card(self, card_name: str, state: GameStateView) -> bool:
@@ -145,7 +145,7 @@ class BotAgent(PlayerAgent):
 
     def _pick_target(self, state: GameStateView, decision: PendingDecision) -> int:
         p = self.personality
-        targets: list[int] = decision.options
+        targets: List[int] = decision.options
 
         one_card = [i for i in targets if state.players[i].influence_count == 1]
         if one_card and random.random() < p.aggression:
@@ -158,7 +158,7 @@ class BotAgent(PlayerAgent):
 
     def _lose_influence(self, state: GameStateView, decision: PendingDecision) -> int:
         my_cards = self._my_cards(state)
-        card_indices: list[int] = decision.options
+        card_indices: List[int] = decision.options
 
         return min(card_indices, key=lambda i: CARD_VALUE.get(
             my_cards[i] if i < len(my_cards) else "", 0

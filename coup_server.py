@@ -27,7 +27,7 @@ import json
 import random
 import sys
 import threading
-from typing import Any
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from game_engine import GameEngine
 from game_agent import Player, BotAgent
@@ -44,13 +44,13 @@ BOT_NAMES = ["Bot-Alpha", "Bot-Beta", "Bot-Gamma", "Bot-Delta", "Bot-Epsilon"]
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
-def _build_deck() -> list[Influence]:
-    deck: list[Influence] = [Assassin()] * 3 + [Duke()] * 3 + [Countess()] * 3 + [Captain()] * 3
+def _build_deck() -> List[Influence]:
+    deck: List[Influence] = [Assassin()] * 3 + [Duke()] * 3 + [Countess()] * 3 + [Captain()] * 3
     random.shuffle(deck)
     return deck
 
 
-def _deal_players(names: list[str], deck: list[Influence]) -> list[Player]:
+def _deal_players(names: List[str], deck: List[Influence]) -> List[Player]:
     players = []
     for name in names:
         influences = [deck.pop(), deck.pop()]
@@ -58,7 +58,7 @@ def _deal_players(names: list[str], deck: list[Influence]) -> list[Player]:
     return players
 
 
-def _deserialize_choice(choice_raw: Any, decision: PendingDecision) -> Influence | int | DecisionResponse:
+def _deserialize_choice(choice_raw: Any, decision: PendingDecision) -> Union[Influence, int, DecisionResponse]:
     """Convert the raw JSON value from the client back to a Python game object."""
     dt = decision.decision_type
     if dt == DecisionType.PICK_ACTION:
@@ -76,7 +76,7 @@ class _DiscoveryProtocol(asyncio.DatagramProtocol):
 
     def __init__(self, game_server: "GameServer") -> None:
         self._gs = game_server
-        self._transport: asyncio.DatagramTransport | None = None
+        self._transport: Optional[asyncio.DatagramTransport]= None
 
     def connection_made(self, transport) -> None:  # type: ignore[override]
         self._transport = transport
@@ -103,20 +103,20 @@ class GameServer:
         # Lobby state
         self._lobby_lock = asyncio.Lock()
         # list of (name, writer) for each connected human in lobby order
-        self._lobby_clients: list[tuple[str, asyncio.StreamWriter]] = []
+        self._lobby_clients: List[Tuple[str, asyncio.StreamWriter]] = []
         self._start_event = asyncio.Event()
         self._game_started = False
 
         # For programmatic start (solo / host modes)
         self._auto_start = auto_start
-        self._server_loop: asyncio.AbstractEventLoop | None = None
-        self._bot_agents: dict[int, BotAgent] = {}
+        self._server_loop: Optional[asyncio.AbstractEventLoop]= None
+        self._bot_agents: Dict[int, BotAgent] = {}
         # player_index → asyncio.Queue (receives raw choice values from clients)
-        self._human_queues: dict[int, asyncio.Queue] = {}
+        self._human_queues: Dict[int, asyncio.Queue] = {}
         # player_index → StreamWriter (to send game states)
-        self._human_writers: dict[int, asyncio.StreamWriter] = {}
+        self._human_writers: Dict[int, asyncio.StreamWriter] = {}
         # StreamWriter → player_index (reverse map, for handle_client)
-        self._writer_to_index: dict[asyncio.StreamWriter, int] = {}
+        self._writer_to_index: Dict[asyncio.StreamWriter, int] = {}
 
     # ── lobby helpers ──────────────────────────────────────────────────────────
 

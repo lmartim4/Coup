@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
+from typing import Dict, List, Optional, TYPE_CHECKING
 
 from actions import (ActionEffect, AssassinationEffect, StealEffect, TaxEffect,
                      IncomeEffect, ForeignAidEffect, CoupEffect)
@@ -26,11 +26,11 @@ class Influence(ABC):
     def get_description(self) -> str:
         pass
 
-    def get_action(self) -> ActionEffect | None:
+    def get_action(self) -> Optional[ActionEffect]:
         """The action this card enables, or None if purely defensive."""
         return None
 
-    def get_blockers(self) -> list[type[Influence]]:
+    def get_blockers(self) -> List[type[Influence]]:
         """Influence types that can block this card's action. Empty = unblockable."""
         return []
 
@@ -50,7 +50,7 @@ class Influence(ABC):
         blockers = self.get_blockers()
         return blockers[0]().get_name() if blockers else ''
 
-    def apply(self, player: Player, target: Player | None = None) -> None:
+    def apply(self, player: Player, target: Optional[Player]= None) -> None:
         action = self.get_action()
         if action:
             action.apply(player, target)
@@ -74,7 +74,7 @@ class Influence(ABC):
         action = self.get_action()
         return action.is_open_blockable() if action else False
 
-    def apply_effect(self, player: Player, target: Player | None = None) -> None:
+    def apply_effect(self, player: Player, target: Optional[Player]= None) -> None:
         action = self.get_action()
         if action:
             action.apply_effect(player, target)
@@ -106,7 +106,7 @@ class Assassin(Influence):
     def get_action(self) -> AssassinationEffect:
         return AssassinationEffect()
 
-    def get_blockers(self) -> list[type[Influence]]:
+    def get_blockers(self) -> List[type[Influence]]:
         return [Countess]
 
 
@@ -139,7 +139,7 @@ class Captain(Influence):
     def get_action(self) -> StealEffect:
         return StealEffect()
 
-    def get_blockers(self) -> list[type[Influence]]:
+    def get_blockers(self) -> List[type[Influence]]:
         return [Captain]
 
 
@@ -166,7 +166,7 @@ class ForeignAidAction(Influence):
     def get_action(self) -> ForeignAidEffect:
         return ForeignAidEffect()
 
-    def get_blockers(self) -> list[type[Influence]]:
+    def get_blockers(self) -> List[type[Influence]]:
         return [Duke]
 
 
@@ -183,7 +183,7 @@ class CoupAction(Influence):
 
 
 # Map card name → strategic keep-value, derived from each card's own definition.
-CARD_VALUE: dict[str, int] = {
+CARD_VALUE: Dict[str, int] = {
     cls().get_name(): cls().get_value()
     for cls in (Countess, Assassin, Duke, Captain)
     if hasattr(cls(), "get_value")

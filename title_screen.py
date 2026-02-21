@@ -12,7 +12,7 @@ import json as _json
 import socket as _socket
 import threading as _threading
 import time as _time
-from typing import Any
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import pygame
 
@@ -44,10 +44,10 @@ _BTN_COLORS = {
 }
 
 
-def _scan_lan(port: int = _DISCOVERY_PORT, timeout: float = 1.5) -> list[dict]:
+def _scan_lan(port: int = _DISCOVERY_PORT, timeout: float = 1.5) -> List[dict]:
     """Send a UDP broadcast and collect replies from Coup servers on the LAN."""
-    results: list[dict] = []
-    seen: set[str] = set()
+    results: List[dict] = []
+    seen: Set[str] = set()
     try:
         with _socket.socket(_socket.AF_INET, _socket.SOCK_DGRAM) as sock:
             sock.setsockopt(_socket.SOL_SOCKET, _socket.SO_BROADCAST, 1)
@@ -110,20 +110,20 @@ class TitleScreen:
         self._font_label   = pygame.font.SysFont(None, 24)
 
         self._state        = "main"   # "main" | "input"
-        self._mode: str | None = None
+        self._mode: Optional[str]= None
         self._name_buf     = ""
         self._ip_buf       = "localhost"
         self._active_field = "name"   # "name" | "ip"
         self._confirm_flag = False    # set by Enter key
 
         # LAN discovery (join mode only)
-        self._lan_servers: list[dict]             = []
+        self._lan_servers: List[dict]             = []
         self._scan_done:   bool                   = True
-        self._scan_thread: _threading.Thread | None = None
+        self._scan_thread: Optional[_threading.Thread]= None
 
     # ── public ────────────────────────────────────────────────────────────────
 
-    def run(self) -> dict[str, Any]:
+    def run(self) -> Dict[str, Any]:
         """Blocking loop; returns config dict when user confirms."""
         while True:
             mouse = pygame.mouse.get_pos()
@@ -169,7 +169,7 @@ class TitleScreen:
 
     # ── event handlers ────────────────────────────────────────────────────────
 
-    def _on_click(self, pos: tuple[int, int], mouse: tuple[int, int]) -> dict[str, Any] | None:
+    def _on_click(self, pos: Tuple[int, int], mouse: Tuple[int, int]) -> Optional[Dict[str, Any]]:
         W, H = self.screen.get_size()
 
         if self._state == "main":
@@ -259,7 +259,7 @@ class TitleScreen:
 
     # ── drawing ───────────────────────────────────────────────────────────────
 
-    def _draw_main(self, mouse: tuple[int, int]) -> None:
+    def _draw_main(self, mouse: Tuple[int, int]) -> None:
         W, H = self.screen.get_size()
         cx = W // 2
 
@@ -282,7 +282,7 @@ class TitleScreen:
             rect = pygame.Rect(bx, y, self.BTN_W, self.BTN_H)
             self._draw_btn(rect, label, mode, mouse)
 
-    def _draw_input(self, mouse: tuple[int, int]) -> None:
+    def _draw_input(self, mouse: Tuple[int, int]) -> None:
         if self._mode == "join":
             self._draw_join_input(mouse)
             return
@@ -312,7 +312,7 @@ class TitleScreen:
         confirm_rect = self._confirm_rect(W, H)
         self._draw_btn(confirm_rect, "Start", "confirm", mouse)
 
-    def _draw_join_input(self, mouse: tuple[int, int]) -> None:
+    def _draw_join_input(self, mouse: Tuple[int, int]) -> None:
         """Join-mode input screen: name field + LAN server list + IP field."""
         W, H = self.screen.get_size()
         cx   = W // 2
@@ -463,7 +463,7 @@ class TitleScreen:
                                 rect.centery - surf.get_height() // 2))
 
     def _draw_btn(self, rect: pygame.Rect, label: str,
-                  mode: str, mouse: tuple[int, int]) -> None:
+                  mode: str, mouse: Tuple[int, int]) -> None:
         color, hover = _BTN_COLORS.get(mode, _BTN_COLORS["confirm"])
         hovered = rect.collidepoint(mouse)
         pygame.draw.rect(self.screen, hover if hovered else color,
@@ -473,7 +473,7 @@ class TitleScreen:
         self.screen.blit(surf, (rect.centerx - surf.get_width() // 2,
                                 rect.centery - surf.get_height() // 2))
 
-    def _make_result(self) -> dict[str, Any]:
+    def _make_result(self) -> Dict[str, Any]:
         return {
             "mode":      self._mode,
             "name":      (self._name_buf.strip() or "Player")[:20],

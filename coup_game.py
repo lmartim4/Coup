@@ -2,7 +2,7 @@ import asyncio
 import json
 import queue
 import threading
-from typing import Any
+from typing import Any, List, Optional, Tuple, Union
 import pygame
 from renderer import Renderer
 from game_state import (
@@ -54,7 +54,7 @@ def _deserialize_state(data: dict) -> GameStateView:
     )
 
 
-def _serialize_choice(choice: Any) -> str | int:
+def _serialize_choice(choice: Any) -> Union[str, int]:
     """Convert a click result into a JSON-safe value for the server."""
     if isinstance(choice, _ActionProxy):
         return choice.get_name()
@@ -80,8 +80,8 @@ class CoupGame:
         port: int = PORT,
         is_host: bool = False,
         server_ref=None,
-        screen: pygame.Surface | None = None,
-        clock: pygame.time.Clock | None = None,
+        screen: Optional[pygame.Surface]= None,
+        clock: Optional[pygame.time.Clock]= None,
     ):
         self._player_name = player_name
         self._host        = host
@@ -99,22 +99,22 @@ class CoupGame:
         self.renderer = Renderer(screen, self.font)
 
         # Shared state between pygame thread and network thread.
-        self._state: GameStateView | None = None
-        self._clickable: list[tuple[pygame.Rect, Any]] = []
+        self._state: Optional[GameStateView]= None
+        self._clickable: List[Tuple[pygame.Rect, Any]] = []
         self._game_over: bool = False
         self._status_msg: str = f"Connecting to {host}:{port}…"
 
         # Rect for the lobby "Start Game" button (host mode only).
-        self._start_btn_rect: pygame.Rect | None = None
+        self._start_btn_rect: Optional[pygame.Rect]= None
 
         # Thread-safe channels.
         self._state_queue: queue.Queue[GameStateView] = queue.Queue()    # network → pygame
         self._decision_queue: queue.Queue[str | int] = queue.Queue()  # pygame → network
 
         # Speech-bubble deduplication key (prevents re-triggering the same announcement).
-        self._last_bubble_key: tuple[Any, ...] | None = None
+        self._last_bubble_key: Optional[Tuple[Any, ...]]= None
         # Tracks the last current_turn seen, used to detect Renda (no-announcement action).
-        self._prev_turn: int | None = None
+        self._prev_turn: Optional[int]= None
 
     # ── pygame loop ────────────────────────────────────────────────────────────
 
@@ -163,7 +163,7 @@ class CoupGame:
 
         pygame.quit()
 
-    def _draw_status(self, msg: str, mouse_pos: tuple[int, int] = (0, 0)) -> None:
+    def _draw_status(self, msg: str, mouse_pos: Tuple[int, int] = (0, 0)) -> None:
         font = pygame.font.SysFont(None, 36)
         W, H = self.screen.get_size()
         lines = msg.split("\n")
@@ -193,7 +193,7 @@ class CoupGame:
             ))
             self._start_btn_rect = rect
 
-    def _handle_click(self, pos: tuple[int, int]) -> None:
+    def _handle_click(self, pos: Tuple[int, int]) -> None:
         # Lobby "Start Game" button (host mode, before game state arrives)
         if (self._state is None
                 and self._is_host

@@ -1,5 +1,5 @@
 import math
-from typing import Any
+from typing import Any, List, Optional, Tuple
 
 import pygame
 from game_state import GameStateView, PendingDecision, PlayerStateView, DecisionType, DecisionResponse
@@ -36,7 +36,7 @@ class SpeechBubble:
     BORDER_COLOR = (25,  20,  20)
 
     def __init__(self, text: str, anchor_x: int, anchor_y: int,
-                 tail_dir: str, color: tuple[int, int, int]):
+                 tail_dir: str, color: Tuple[int, int, int]):
         """
         anchor_x/y : pixel position of the tail tip (the panel edge the bubble points at).
         tail_dir   : 'up' | 'down' | 'left' | 'right' — direction the tail points.
@@ -52,7 +52,7 @@ class SpeechBubble:
 
     # ── animation ──────────────────────────────────────────────────────────
 
-    def _anim(self) -> tuple[float, int]:
+    def _anim(self) -> Tuple[float, int]:
         elapsed = pygame.time.get_ticks() - self._start
         total   = self.POPUP_MS + self.DISPLAY_MS + self.FADEOUT_MS
         if elapsed >= total:
@@ -231,12 +231,12 @@ class Renderer:
         self.screen       = screen
         self.font         = font
         self._bubble_font = pygame.font.SysFont(None, 22, bold=True)
-        self._bubbles: list[SpeechBubble] = []
+        self._bubbles: List[SpeechBubble] = []
 
     def clear(self):
         self.screen.fill(self.BG_COLOR)
 
-    def _player_color(self, idx: int) -> tuple[int, int, int]:
+    def _player_color(self, idx: int) -> Tuple[int, int, int]:
         return self.PLAYER_COLORS[idx % len(self.PLAYER_COLORS)]
 
     # ------------------------------------------------------------------ layout
@@ -244,7 +244,7 @@ class Renderer:
     def _panel_height(self, player: PlayerStateView) -> int:
         return self.PANEL_PAD + self.INFO_H + self.CARD_ROW_H + self.PANEL_PAD
 
-    def _seat_positions(self, n: int, viewer_idx: int, W: int, H: int) -> list[tuple[int, int]]:
+    def _seat_positions(self, n: int, viewer_idx: int, W: int, H: int) -> List[Tuple[int, int]]:
         """
         Calcula a posição central do painel de cada jogador distribuindo-os
         simetricamente ao redor de uma elipse.
@@ -267,7 +267,7 @@ class Renderer:
 
     # ------------------------------------------------------------------ draw principal
 
-    def draw(self, state: GameStateView, mouse_pos: tuple[int, int]) -> list[tuple[pygame.Rect, Any]]:
+    def draw(self, state: GameStateView, mouse_pos: Tuple[int, int]) -> List[Tuple[pygame.Rect, Any]]:
         clickable = []
         W, H = self.screen.get_size()
         decision       = state.pending_decision
@@ -432,7 +432,7 @@ class Renderer:
     # ------------------------------------------------------------------ botões por tipo de decisão
 
     def _draw_decision_btns(self, decision: PendingDecision, state: GameStateView,
-                             by: int, mouse_pos: tuple[int, int]) -> list[tuple[pygame.Rect, Any]]:
+                             by: int, mouse_pos: Tuple[int, int]) -> List[Tuple[pygame.Rect, Any]]:
         clickable = []
         dt  = decision.decision_type
         ctx = decision.context
@@ -564,8 +564,8 @@ class Renderer:
                          (x + self.CARD_W - 4, y + 4), (x + 4, y + self.CARD_H - 4), 2)
 
     def _btn(self, x: int, y: int, w: int, h: int, text: str,
-             mouse_pos: tuple[int, int], color: tuple[int, int, int],
-             hover_color: tuple[int, int, int]) -> pygame.Rect:
+             mouse_pos: Tuple[int, int], color: Tuple[int, int, int],
+             hover_color: Tuple[int, int, int]) -> pygame.Rect:
         rect    = pygame.Rect(x, y, w, h)
         hovered = rect.collidepoint(mouse_pos)
         pygame.draw.rect(self.screen, hover_color if hovered else color, rect, border_radius=5)
@@ -576,7 +576,7 @@ class Renderer:
             y + (h - label.get_height()) // 2))
         return rect
 
-    def _text(self, text: str, pos: tuple[int, int], color: tuple[int, int, int] | None = None) -> None:
+    def _text(self, text: str, pos: Tuple[int, int], color: Optional[Tuple[int, int, int]]= None) -> None:
         surf = self.font.render(text, True, color or self.TEXT_COLOR)
         self.screen.blit(surf, pos)
 

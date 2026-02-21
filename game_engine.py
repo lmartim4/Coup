@@ -1,4 +1,5 @@
 import random
+from typing import Dict, List, Optional
 
 from influences import Assassin, Duke, Captain, IncomeAction, ForeignAidAction, CoupAction
 from game_agent import Player
@@ -21,20 +22,20 @@ ALL_ACTIONS = [
 
 class GameEngine:
 
-    def __init__(self, players: list[Player], deck=None):
-        self.players: list[Player] = players
-        self._deck: list | None = list(deck) if deck is not None else None
+    def __init__(self, players: List[Player], deck=None):
+        self.players: List[Player] = players
+        self._deck: Optional[list]= list(deck) if deck is not None else None
         self.current_turn: int = 0
         
-        self.pending_decision:      PendingDecision | None = None
+        self.pending_decision: Optional[PendingDecision]= None
         
-        self._phase_action:      PhaseAction        | None = None
-        self._phase_defense:     PhaseDefense       | None = None
-        self._phase_challenge:   PhaseChallenge     | None = None
-        self._phase_doubt_block: PhaseDoubtBlock    | None = None
-        self._phase_block_open:  PhaseBlockOpen     | None = None
-        self._phase_lose_inf:    PhaseLoseInfluence | None = None
-        self._phase_reveal:      PhaseReveal        | None = None
+        self._phase_action: Optional[PhaseAction]= None
+        self._phase_defense: Optional[PhaseDefense]= None
+        self._phase_challenge: Optional[PhaseChallenge]= None
+        self._phase_doubt_block: Optional[PhaseDoubtBlock]= None
+        self._phase_block_open: Optional[PhaseBlockOpen]= None
+        self._phase_lose_inf: Optional[PhaseLoseInfluence]= None
+        self._phase_reveal: Optional[PhaseReveal]= None
 
         self._emit_pending_decision()
 
@@ -48,10 +49,10 @@ class GameEngine:
                 return id
         return from_id
 
-    def _alive_indices(self) -> list[int]:
+    def _alive_indices(self) -> List[int]:
         return [i for i, p in enumerate(self.players) if p.influences]
 
-    def get_winner(self) -> str | None:
+    def get_winner(self) -> Optional[str]:
         alive = self._alive_indices()
         return self.players[alive[0]].name if len(alive) == 1 else None
     
@@ -507,7 +508,7 @@ class GameEngine:
             ))
 
         # Count every copy of each card type across deck + all player hands + all revealed.
-        cards_per_type: dict[str, int] = {}
+        cards_per_type: Dict[str, int] = {}
         all_cards = list(self._deck or [])
         for p in self.players:
             all_cards.extend(p.influences)

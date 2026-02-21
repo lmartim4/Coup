@@ -7,12 +7,13 @@ from game_agent import Player
 from influences import Assassin, Duke, Countess, Captain, IncomeAction, ForeignAidAction, CoupAction
 from actions import IncomeEffect, ForeignAidEffect, TaxEffect, AssassinationEffect, StealEffect, CoupEffect
 from game_state import (
+from typing import List
     PhaseLoseInfluence, PhaseReveal, RevealContext,
     PendingDecision, PlayerStateView, GameStateView,
     DecisionType, DecisionResponse,
 )
 
-def make_engine(player_cards: list[list]) -> GameEngine:
+def make_engine(player_cards: List[list]) -> GameEngine:
     """Build an engine with deterministic card layouts.  All players start with 2 coins."""
     players = [Player(name=f"P{i}", influences=cards) for i, cards in enumerate(player_cards)]
     return GameEngine(players)
