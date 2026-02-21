@@ -9,6 +9,50 @@ import sys
 from pathlib import Path
 
 
+def _reexec_with_system_libstdcpp():
+    """
+    Re-exec the process with the system libstdc++ preloaded via LD_PRELOAD.
+
+    Setting LD_PRELOAD in os.environ after startup has NO effect on libraries
+    already loaded by the dynamic linker. The only way to force the system
+    libstdc++ to be used instead of PyInstaller's bundled (older) version is
+    to restart the process with LD_PRELOAD set in the environment BEFORE any
+    library loading occurs.
+
+    A guard env var (_COUP_REEXECED) prevents an infinite restart loop.
+    """
+    if not sys.platform.startswith('linux'):
+        return
+
+    # Already re-execed — do not loop
+    if os.environ.get('_COUP_REEXECED') == '1':
+        return
+
+    libstdcpp_candidates = [
+        '/usr/lib/x86_64-linux-gnu/libstdc++.so.6',
+        '/usr/lib64/libstdc++.so.6',
+        '/lib/x86_64-linux-gnu/libstdc++.so.6',
+    ]
+
+    for lib in libstdcpp_candidates:
+        if Path(lib).exists():
+            current_preload = os.environ.get('LD_PRELOAD', '')
+            if lib in current_preload:
+                # Already preloaded from a previous exec — nothing to do
+                return
+            env = os.environ.copy()
+            env['LD_PRELOAD'] = f"{lib}:{current_preload}" if current_preload else lib
+            env['_COUP_REEXECED'] = '1'
+            # /proc/self/exe always points to the running executable on Linux
+            exe = '/proc/self/exe'
+            if Path(exe).exists():
+                os.execve(exe, sys.argv, env)
+            return
+
+
+_reexec_with_system_libstdcpp()
+
+
 def configure_graphics_environment():
     """
     Configure environment to use system graphics drivers instead of bundled libraries.
@@ -63,39 +107,6 @@ def configure_graphics_environment():
         if current_ld_path:
             new_ld_path = f"{new_ld_path}:{current_ld_path}"
         os.environ['LD_LIBRARY_PATH'] = new_ld_path
-
-    # Preload critical system libraries to prevent PyInstaller's bundled versions
-    # from interfering with Mesa drivers. This is the key fix for driver loading issues.
-    preload_libs = []
-
-    # libstdc++: C++ standard library (required by Mesa drivers)
-    libstdcpp_candidates = [
-        '/usr/lib/x86_64-linux-gnu/libstdc++.so.6',
-        '/usr/lib64/libstdc++.so.6',
-        '/lib/x86_64-linux-gnu/libstdc++.so.6',
-    ]
-    for lib in libstdcpp_candidates:
-        if Path(lib).exists():
-            preload_libs.append(lib)
-            break
-
-    # libgcc_s: GCC runtime library (often needed with libstdc++)
-    libgcc_candidates = [
-        '/lib/x86_64-linux-gnu/libgcc_s.so.1',
-        '/usr/lib64/libgcc_s.so.1',
-        '/lib64/libgcc_s.so.1',
-    ]
-    for lib in libgcc_candidates:
-        if Path(lib).exists():
-            preload_libs.append(lib)
-            break
-
-    if preload_libs:
-        current_preload = os.environ.get('LD_PRELOAD', '')
-        new_preload = ':'.join(preload_libs)
-        if current_preload:
-            new_preload = f"{new_preload}:{current_preload}"
-        os.environ['LD_PRELOAD'] = new_preload
 
     # SDL configuration for better compatibility
     if 'SDL_VIDEODRIVER' not in os.environ:
