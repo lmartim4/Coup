@@ -64,6 +64,39 @@ def configure_graphics_environment():
             new_ld_path = f"{new_ld_path}:{current_ld_path}"
         os.environ['LD_LIBRARY_PATH'] = new_ld_path
 
+    # Preload critical system libraries to prevent PyInstaller's bundled versions
+    # from interfering with Mesa drivers. This is the key fix for driver loading issues.
+    preload_libs = []
+
+    # libstdc++: C++ standard library (required by Mesa drivers)
+    libstdcpp_candidates = [
+        '/usr/lib/x86_64-linux-gnu/libstdc++.so.6',
+        '/usr/lib64/libstdc++.so.6',
+        '/lib/x86_64-linux-gnu/libstdc++.so.6',
+    ]
+    for lib in libstdcpp_candidates:
+        if Path(lib).exists():
+            preload_libs.append(lib)
+            break
+
+    # libgcc_s: GCC runtime library (often needed with libstdc++)
+    libgcc_candidates = [
+        '/lib/x86_64-linux-gnu/libgcc_s.so.1',
+        '/usr/lib64/libgcc_s.so.1',
+        '/lib64/libgcc_s.so.1',
+    ]
+    for lib in libgcc_candidates:
+        if Path(lib).exists():
+            preload_libs.append(lib)
+            break
+
+    if preload_libs:
+        current_preload = os.environ.get('LD_PRELOAD', '')
+        new_preload = ':'.join(preload_libs)
+        if current_preload:
+            new_preload = f"{new_preload}:{current_preload}"
+        os.environ['LD_PRELOAD'] = new_preload
+
     # SDL configuration for better compatibility
     if 'SDL_VIDEODRIVER' not in os.environ:
         os.environ['SDL_VIDEODRIVER'] = 'x11'
