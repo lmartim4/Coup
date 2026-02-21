@@ -62,6 +62,7 @@ def build() -> None:
         ]
     else:
         # Linux: single-file executable, console mode to avoid OpenGL driver issues
+        # Runtime hook configures environment to use system graphics libraries
         cmd = [
             sys.executable, "-m", "PyInstaller",
             "--onefile",
@@ -69,6 +70,12 @@ def build() -> None:
             "--icon=coup.ico",
             "--clean",
             "--noconfirm",
+            # Runtime hook to configure graphics environment before app starts
+            "--runtime-hook", "rthook_sdl_graphics.py",
+            # Exclude OpenGL/Mesa libraries - use system drivers instead
+            "--exclude-module", "OpenGL",
+            "--exclude-module", "OpenGL_accelerate",
+            # Don't bundle libGL, Mesa will be loaded from system
             ENTRY_POINT,
         ]
 

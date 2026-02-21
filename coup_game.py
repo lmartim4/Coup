@@ -11,10 +11,11 @@ from pathlib import Path
 def _configure_graphics():
     """
     Smart graphics configuration for PyInstaller bundles.
-    Only falls back to software rendering if OpenGL drivers are unavailable.
+    Configures environment to use system graphics drivers and enables
+    software rendering fallback if hardware acceleration is unavailable.
     """
-    # Only relevant for PyInstaller bundles on Linux
-    if not (sys.platform.startswith('linux') and getattr(sys, '_MEIPASS', None)):
+    # Only relevant for Linux (Windows/macOS handle drivers differently)
+    if not sys.platform.startswith('linux'):
         return
 
     # Check if OpenGL/Mesa drivers are available in common system paths
@@ -22,19 +23,50 @@ def _configure_graphics():
         '/usr/lib/dri',
         '/usr/lib/x86_64-linux-gnu/dri',
         '/usr/lib64/dri',
+        '/usr/lib/i386-linux-gnu/dri',
     ]
 
-    # Look for any .so driver files (iris, swrast, etc.)
-    drivers_found = False
+    # Look for hardware driver files (iris for Intel, radeonsi for AMD, etc.)
+    hardware_drivers_found = False
+    software_renderer_found = False
+
     for driver_path in driver_paths:
         path = Path(driver_path)
-        if path.exists() and any(path.glob('*.so')):
-            drivers_found = True
-            break
+        if path.exists():
+            drivers = list(path.glob('*_dri.so'))
+            if drivers:
+                # Check for software renderer (swrast)
+                if any('swrast' in d.name for d in drivers):
+                    software_renderer_found = True
+                # Check for hardware drivers
+                if any(d.name not in ['swrast_dri.so', 'kms_swrast_dri.so'] for d in drivers):
+                    hardware_drivers_found = True
 
-    if not drivers_found:
-        # No OpenGL drivers found, fall back to software rendering
-        os.environ['LIBGL_ALWAYS_SOFTWARE'] = '1'
+    if getattr(sys, '_MEIPASS', None):
+        # Running as PyInstaller bundle - configure library paths
+        # Ensure we use system libraries, not bundled ones
+        print("[Graphics] Running as PyInstaller bundle, configuring system library paths...")
+
+        # Set LIBGL_DRIVERS_PATH to help Mesa find drivers
+        for driver_path in driver_paths:
+            if Path(driver_path).exists():
+                os.environ['LIBGL_DRIVERS_PATH'] = driver_path
+                print(f"[Graphics] Set LIBGL_DRIVERS_PATH={driver_path}")
+                break
+
+    # Configure rendering mode based on available drivers
+    if not hardware_drivers_found:
+        if software_renderer_found:
+            print("[Graphics] No hardware drivers found, enabling software rendering (swrast)...")
+            os.environ['LIBGL_ALWAYS_SOFTWARE'] = '1'
+        else:
+            print("[Graphics] WARNING: No graphics drivers found. Trying software rendering anyway...")
+            os.environ['LIBGL_ALWAYS_SOFTWARE'] = '1'
+    else:
+        print(f"[Graphics] Hardware drivers available, using hardware acceleration")
+
+    # SDL configuration for better compatibility
+    if 'SDL_VIDEODRIVER' not in os.environ:
         os.environ['SDL_VIDEODRIVER'] = 'x11'
 
 
@@ -59,23 +91,44 @@ def _init_pygame_display(width: int, height: int, flags: int) -> pygame.Surface:
     Initialize pygame display with fallback to software rendering on Linux.
 
     Tries hardware acceleration first, falls back to software rendering if that fails
-    (common issue with missing OpenGL drivers on Linux).
+    (common issue with missing OpenGL drivers on Linux or PyInstaller bundles).
     """
     try:
         pygame.init()
         screen = pygame.display.set_mode((width, height), flags)
+        print(f"[Graphics] Display initialized successfully ({width}x{height})")
         return screen
     except Exception as e:
         # If hardware acceleration fails on Linux, try software rendering
         if sys.platform.startswith('linux'):
-            print(f"[Warning] Hardware acceleration failed ({e}), trying software rendering...")
+            print(f"[Graphics] Hardware acceleration failed: {e}")
+            print(f"[Graphics] Attempting software rendering fallback...")
+
+            # Enable software rendering
             os.environ['LIBGL_ALWAYS_SOFTWARE'] = '1'
             os.environ['SDL_VIDEODRIVER'] = 'x11'
+            os.environ['SDL_RENDER_DRIVER'] = 'software'
+
             # Reinitialize pygame with software rendering
-            pygame.quit()
+            try:
+                pygame.quit()
+            except Exception:
+                pass
+
             pygame.init()
-            screen = pygame.display.set_mode((width, height), flags)
-            return screen
+
+            # Try without hardware acceleration flags
+            try:
+                screen = pygame.display.set_mode((width, height), flags)
+                print(f"[Graphics] Software rendering enabled successfully")
+                return screen
+            except Exception as e2:
+                # Last resort: try basic display mode without special flags
+                print(f"[Graphics] Advanced flags failed: {e2}")
+                print(f"[Graphics] Trying basic display mode...")
+                screen = pygame.display.set_mode((width, height), 0)
+                print(f"[Graphics] Basic display mode working")
+                return screen
         else:
             raise
 
