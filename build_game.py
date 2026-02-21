@@ -1,97 +1,82 @@
-import PyInstaller.__main__
-import shutil
+"""
+Build script for CoupGame.
+Compiles the game with PyInstaller and packages it for release.
+
+Usage:
+    python build_game.py
+
+The RELEASE_VERSION env var is set by GitHub Actions from the git tag.
+Locally it defaults to "v0.0.0-dev".
+"""
+
 import os
-import zipfile
-import tarfile
 import platform
+import shutil
+import tarfile
+import zipfile
 
-# ================= CONFIGURAÇÕES =================
-GAME_SCRIPT = "coup_game.py"  # Nome do seu script principal
-APP_NAME = "CoupGame"         # Nome do executável final
-VERSION = os.environ.get("RELEASE_VERSION", "v1.0.0")  # Lido da tag do git na CI, ou padrão local
-OUTPUT_DIR = "build_output"   # Onde os arquivos finais ficarão
-ASSETS_DIR = "assets"         # Pasta de imagens/sons (se tiver, deixe None se não tiver)
-# =================================================
+import PyInstaller.__main__
 
-def clean_folders():
-    """Limpa pastas de builds anteriores para evitar conflitos."""
-    folders = ["dist", "build", OUTPUT_DIR]
-    for folder in folders:
+# ── Config ────────────────────────────────────────────────────────────────────
+APP_NAME = "CoupGame"
+SPEC_FILE = "CoupGame.spec"
+VERSION = os.environ.get("RELEASE_VERSION", "v0.0.0-dev")
+OUTPUT_DIR = "build_output"
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def clean():
+    for folder in ("dist", "build", OUTPUT_DIR):
         if os.path.exists(folder):
             shutil.rmtree(folder)
-            print(f"Limpeza: Pasta '{folder}' removida.")
+            print(f"Removed: {folder}/")
+
 
 def compile_game():
-    """Usa o PyInstaller para gerar o executável."""
-    print(f"Compilando {GAME_SCRIPT}...")
-    
-    os_name = platform.system()
-    sep = ";" if os_name == "Windows" else ":"
-    
-    # Comandos básicos do PyInstaller
-    args = [
-        GAME_SCRIPT,
-        '--name=%s' % APP_NAME,
-        '--onedir',  # Cria uma pasta (melhor para atualizações do que um único arquivo gigante)
-        '--clean',
-        '--noconsole',  # Remove a tela preta (ative se precisar debugar erros)
-        '--icon=coup.ico',
-    ]
+    print(f"Building {APP_NAME} {VERSION} via PyInstaller ({SPEC_FILE})…")
+    PyInstaller.__main__.run(["--clean", SPEC_FILE])
+    print("PyInstaller finished.")
 
-    # Se tiver assets, inclui no comando
-    if ASSETS_DIR and os.path.exists(ASSETS_DIR):
-        args.append(f'--add-data={ASSETS_DIR}{sep}{ASSETS_DIR}')
 
-    PyInstaller.__main__.run(args)
-    print("Compilação concluída!")
-
-def create_version_file():
-    """Cria o arquivo version.txt dentro da pasta compilada."""
-    # O launcher precisa desse arquivo para saber a versão instalada
-    dist_folder = os.path.join("dist", APP_NAME)
-    with open(os.path.join(dist_folder, "version.txt"), "w") as f:
+def write_version_file():
+    version_path = os.path.join("dist", APP_NAME, "version.txt")
+    with open(version_path, "w") as f:
         f.write(VERSION)
-    print(f"Arquivo de versão ({VERSION}) criado.")
+    print(f"Version file written: {version_path}")
 
-def package_release():
-    """Compacta a pasta do jogo em .zip ou .tar.gz para o GitHub."""
-    os_name = platform.system()
-    dist_folder = os.path.join("dist", APP_NAME)
+
+def package():
     os.makedirs(OUTPUT_DIR, exist_ok=True)
+    dist_folder = os.path.join("dist", APP_NAME)
+    system = platform.system()
 
-    if os_name == "Windows":
+    if system == "Windows":
         archive_name = f"{APP_NAME}-Windows-{VERSION}.zip"
         archive_path = os.path.join(OUTPUT_DIR, archive_name)
-        
-        print(f"Criando ZIP para Windows: {archive_name}")
-        with zipfile.ZipFile(archive_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-            for root, dirs, files in os.walk(dist_folder):
+        print(f"Creating ZIP: {archive_name}")
+        with zipfile.ZipFile(archive_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            for root, _dirs, files in os.walk(dist_folder):
                 for file in files:
-                    file_path = os.path.join(root, file)
-                    # Salva no zip mantendo a estrutura interna correta
-                    arcname = os.path.relpath(file_path, start="dist")
-                    zipf.write(file_path, arcname)
+                    full_path = os.path.join(root, file)
+                    arcname = os.path.relpath(full_path, start="dist")
+                    zf.write(full_path, arcname)
 
-    elif os_name in ("Linux", "Darwin"):
-        platform_name = "macOS" if os_name == "Darwin" else "Linux"
+    elif system in ("Linux", "Darwin"):
+        platform_name = "macOS" if system == "Darwin" else "Linux"
         archive_name = f"{APP_NAME}-{platform_name}-{VERSION}.tar.gz"
         archive_path = os.path.join(OUTPUT_DIR, archive_name)
+        print(f"Creating TAR.GZ: {archive_name}")
+        with tarfile.open(archive_path, "w:gz") as tf:
+            tf.add(dist_folder, arcname=APP_NAME)
 
-        print(f"Criando TAR.GZ para {platform_name}: {archive_name}")
-        with tarfile.open(archive_path, "w:gz") as tar:
-            tar.add(dist_folder, arcname=APP_NAME)
+    else:
+        raise RuntimeError(f"Unsupported platform: {system}")
 
-    print(f"Release pronta em: {archive_path}")
+    print(f"Release package ready: {archive_path}")
+
 
 if __name__ == "__main__":
-    # Garante que tem o PyInstaller instalado
-    try:
-        import PyInstaller
-    except ImportError:
-        print("Erro: PyInstaller não encontrado. Rode 'pip install pyinstaller'.")
-        exit()
-
-    clean_folders()
+    clean()
     compile_game()
-    create_version_file()
-    package_release()
+    write_version_file()
+    package()
