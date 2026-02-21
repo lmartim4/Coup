@@ -101,10 +101,10 @@ class GameServer:
 
     def __init__(self, auto_start: bool = False):
         # Lobby state
-        self._lobby_lock = asyncio.Lock()
+        self._lobby_lock: Optional[asyncio.Lock] = None
         # list of (name, writer) for each connected human in lobby order
         self._lobby_clients: List[Tuple[str, asyncio.StreamWriter]] = []
-        self._start_event = asyncio.Event()
+        self._start_event: Optional[asyncio.Event] = None
         self._game_started = False
 
         # For programmatic start (solo / host modes)
@@ -233,6 +233,7 @@ class GameServer:
         name = str(msg.get("name", "Player"))[:20].strip() or "Player"
 
         # ── Step 2: add to lobby (or reject) ───────────────────────────────
+        assert self._lobby_lock is not None, "Server not properly initialized"
         async with self._lobby_lock:
             if self._game_started:
                 reply = json.dumps({"type": "error", "msg": "Game already started"}) + "\n"
@@ -256,6 +257,7 @@ class GameServer:
             asyncio.create_task(self.start_game())
 
         # ── Step 3: wait for game start ────────────────────────────────────
+        assert self._start_event is not None, "Server not properly initialized"
         await self._start_event.wait()
 
         # ── Step 4: game phase — read decisions from this client ───────────
@@ -302,6 +304,7 @@ class GameServer:
 
     async def start_game(self):
         """Build the game, assign indices, and start the game loop."""
+        assert self._lobby_lock is not None, "Server not properly initialized"
         async with self._lobby_lock:
             if self._game_started:
                 return  # guard against double-start
@@ -336,6 +339,7 @@ class GameServer:
         print(f"  Bots   : {bots}")
 
         # Wake up all waiting handle_client coroutines
+        assert self._start_event is not None, "Server not properly initialized"
         self._start_event.set()
 
         # Run the game
@@ -370,6 +374,10 @@ async def _run_server_async(game_server: "GameServer") -> None:
     """Coroutine used by run_server_in_thread – no console loop."""
     loop = asyncio.get_running_loop()
     game_server._server_loop = loop
+
+    # Create asyncio primitives in the correct event loop
+    game_server._lobby_lock = asyncio.Lock()
+    game_server._start_event = asyncio.Event()
 
     async def _handler(reader, writer):
         await game_server.handle_client(reader, writer)
@@ -407,6 +415,10 @@ def run_server_in_thread(auto_start: bool = False) -> GameServer:
 
 async def main() -> None:
     game_server = GameServer()
+
+    # Create asyncio primitives in the correct event loop
+    game_server._lobby_lock = asyncio.Lock()
+    game_server._start_event = asyncio.Event()
 
     async def _handler(reader, writer):
         await game_server.handle_client(reader, writer)

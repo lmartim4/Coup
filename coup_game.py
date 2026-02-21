@@ -1,6 +1,8 @@
 import asyncio
 import json
+import os
 import queue
+import sys
 import threading
 from typing import Any, List, Optional, Tuple, Union
 import pygame
@@ -15,6 +17,33 @@ from game_state import (
 
 HOST = "localhost"
 PORT = 1235
+
+
+def _init_pygame_display(width: int, height: int, flags: int) -> pygame.Surface:
+    """
+    Initialize pygame display with fallback to software rendering on Linux.
+
+    Tries hardware acceleration first, falls back to software rendering if that fails
+    (common issue with missing OpenGL drivers on Linux).
+    """
+    try:
+        pygame.init()
+        screen = pygame.display.set_mode((width, height), flags)
+        return screen
+    except Exception as e:
+        # If hardware acceleration fails on Linux, try software rendering
+        if sys.platform.startswith('linux'):
+            print(f"[Warning] Hardware acceleration failed ({e}), trying software rendering...")
+            os.environ['LIBGL_ALWAYS_SOFTWARE'] = '1'
+            os.environ['SDL_VIDEODRIVER'] = 'x11'
+            # Reinitialize pygame with software rendering
+            pygame.quit()
+            pygame.init()
+            screen = pygame.display.set_mode((width, height), flags)
+            return screen
+        else:
+            raise
+
 
 class _ActionProxy:
     def __init__(self, name: str):
@@ -90,8 +119,7 @@ class CoupGame:
         self._server_ref  = server_ref
 
         if screen is None:
-            pygame.init()
-            screen = pygame.display.set_mode((1280, 720), pygame.RESIZABLE)
+            screen = _init_pygame_display(1280, 720, pygame.RESIZABLE)
         pygame.display.set_caption(f"Coup – {player_name}")
         self.screen = screen
         self.clock  = clock if clock is not None else pygame.time.Clock()
@@ -371,8 +399,7 @@ if __name__ == "__main__":
     from title_screen import TitleScreen
     from coup_server import run_server_in_thread
 
-    pygame.init()
-    screen = pygame.display.set_mode((1280, 720), pygame.RESIZABLE)
+    screen = _init_pygame_display(1280, 720, pygame.RESIZABLE)
     pygame.display.set_caption("Coup")
     clock = pygame.time.Clock()
     

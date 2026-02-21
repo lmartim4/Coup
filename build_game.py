@@ -48,12 +48,23 @@ def build() -> None:
             "--noconfirm",
             ENTRY_POINT,
         ]
-    else:
-        # Windows and Linux: single-file executable, no .app bundle needed.
+    elif PLATFORM == "win32":
+        # Windows: single-file executable with windowed mode
         cmd = [
             sys.executable, "-m", "PyInstaller",
             "--onefile",
             "--windowed",
+            "--name", APP_NAME,
+            "--icon=coup.ico",
+            "--clean",
+            "--noconfirm",
+            ENTRY_POINT,
+        ]
+    else:
+        # Linux: single-file executable, console mode to avoid OpenGL driver issues
+        cmd = [
+            sys.executable, "-m", "PyInstaller",
+            "--onefile",
             "--name", APP_NAME,
             "--icon=coup.ico",
             "--clean",

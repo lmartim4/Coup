@@ -10,6 +10,7 @@ Returns a dict:
 
 import json as _json
 import socket as _socket
+import sys as _sys
 import threading as _threading
 import time as _time
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -41,6 +42,8 @@ _BTN_COLORS = {
     "host": ((70, 100, 140), (100, 140, 190)),
     "join": ((120, 60, 160), (160,  90, 210)),
     "confirm": ((70, 100, 140), (100, 140, 190)),
+    "hwinfo": ((90, 70, 50), (130, 110, 80)),
+    "back": ((60, 60, 80), (90, 90, 120)),
 }
 
 
@@ -99,6 +102,8 @@ class TitleScreen:
     CONFIRM_H    = 48
     LIST_ROW_H   = 38
     LIST_MAX_ROWS = 3
+    HWINFO_BTN_W = 160
+    HWINFO_BTN_H = 40
 
     def __init__(self, screen: pygame.Surface, clock: pygame.time.Clock):
         self.screen = screen
@@ -108,8 +113,9 @@ class TitleScreen:
         self._font_sub     = pygame.font.SysFont(None, 34)
         self._font_btn     = pygame.font.SysFont(None, 30)
         self._font_label   = pygame.font.SysFont(None, 24)
+        self._font_small   = pygame.font.SysFont(None, 20)
 
-        self._state        = "main"   # "main" | "input"
+        self._state        = "main"   # "main" | "input" | "hwinfo"
         self._mode: Optional[str]= None
         self._name_buf     = ""
         self._ip_buf       = "localhost"
@@ -152,6 +158,8 @@ class TitleScreen:
             self.screen.fill(BG_COLOR)
             if self._state == "main":
                 self._draw_main(mouse)
+            elif self._state == "hwinfo":
+                self._draw_hwinfo(mouse)
             else:
                 self._draw_input(mouse)
             pygame.display.flip()
@@ -190,6 +198,20 @@ class TitleScreen:
                     if mode == "join":
                         self._start_scan()
                     return None
+
+            # Hardware Info button
+            hw_x = W - self.HWINFO_BTN_W - 20
+            hw_y = H - self.HWINFO_BTN_H - 20
+            hw_rect = pygame.Rect(hw_x, hw_y, self.HWINFO_BTN_W, self.HWINFO_BTN_H)
+            if hw_rect.collidepoint(pos):
+                self._state = "hwinfo"
+                return None
+
+        elif self._state == "hwinfo":
+            # Back button
+            if hasattr(self, '_hwinfo_back_rect') and self._hwinfo_back_rect.collidepoint(pos):
+                self._state = "main"
+                return None
 
         else:  # input state
             cx = W // 2
@@ -234,6 +256,9 @@ class TitleScreen:
             self._state = "main"
             self._mode  = None
             return
+
+        if self._state == "hwinfo":
+            return  # No other key handling needed for hwinfo
 
         if event.key == pygame.K_RETURN:
             self._confirm_flag = True
@@ -281,6 +306,12 @@ class TitleScreen:
             y    = sy + i * (self.BTN_H + self.BTN_GAP)
             rect = pygame.Rect(bx, y, self.BTN_W, self.BTN_H)
             self._draw_btn(rect, label, mode, mouse)
+
+        # Hardware Info button (bottom right corner)
+        hw_x = W - self.HWINFO_BTN_W - 20
+        hw_y = H - self.HWINFO_BTN_H - 20
+        hw_rect = pygame.Rect(hw_x, hw_y, self.HWINFO_BTN_W, self.HWINFO_BTN_H)
+        self._draw_btn(hw_rect, "Hardware Info", "hwinfo", mouse)
 
     def _draw_input(self, mouse: Tuple[int, int]) -> None:
         if self._mode == "join":
@@ -472,6 +503,102 @@ class TitleScreen:
         surf = self._font_btn.render(label, True, TEXT_COLOR)
         self.screen.blit(surf, (rect.centerx - surf.get_width() // 2,
                                 rect.centery - surf.get_height() // 2))
+
+    def _get_hardware_info(self) -> List[Tuple[str, str]]:
+        """Gather hardware and rendering information."""
+        info = []
+
+        # Platform
+        info.append(("Platform", _sys.platform))
+
+        # Pygame version
+        info.append(("Pygame Version", pygame.version.ver))
+
+        # SDL version
+        info.append(("SDL Version", f"{pygame.version.SDL[0]}.{pygame.version.SDL[1]}.{pygame.version.SDL[2]}"))
+
+        # Video driver
+        driver = pygame.display.get_driver()
+        info.append(("Video Driver", driver))
+
+        # Check for software rendering environment variables
+        using_software = False
+        if _sys.platform.startswith('linux'):
+            import os as _os
+            if _os.environ.get('LIBGL_ALWAYS_SOFTWARE') == '1':
+                using_software = True
+                info.append(("Rendering Mode", "Software (LIBGL_ALWAYS_SOFTWARE)"))
+            elif _os.environ.get('SDL_VIDEODRIVER') == 'x11':
+                info.append(("Rendering Mode", "X11 (Fallback)"))
+
+        if not using_software:
+            # Try to get OpenGL info if available
+            try:
+                from pygame import _sdl2
+                info.append(("Rendering Mode", "Hardware Accelerated (SDL2)"))
+            except (ImportError, AttributeError):
+                info.append(("Rendering Mode", "Standard (Unknown)"))
+
+        # Display capabilities
+        info.append(("Hardware Accel Support", "Yes" if pygame.display.mode_ok((800, 600), pygame.HWSURFACE) else "No"))
+
+        # Current display info
+        current_info = pygame.display.Info()
+        info.append(("Current Display Size", f"{current_info.current_w} x {current_info.current_h}"))
+        info.append(("Color Depth", f"{current_info.bitsize} bits"))
+
+        return info
+
+    def _draw_hwinfo(self, mouse: Tuple[int, int]) -> None:
+        """Draw the hardware information screen."""
+        W, H = self.screen.get_size()
+        cx = W // 2
+
+        # Panel dimensions
+        panel_w = 600
+        panel_h = 480
+        panel_x = cx - panel_w // 2
+        panel_y = H // 2 - panel_h // 2
+
+        # Draw panel background
+        panel_rect = pygame.Rect(panel_x, panel_y, panel_w, panel_h)
+        pygame.draw.rect(self.screen, PANEL_BG, panel_rect, border_radius=12)
+        pygame.draw.rect(self.screen, PANEL_BORDER, panel_rect, width=2, border_radius=12)
+
+        # Title
+        title_surf = self._font_sub.render("Hardware Information", True, TEXT_HINT)
+        self.screen.blit(title_surf, (cx - title_surf.get_width() // 2, panel_y + 30))
+
+        # Get hardware info
+        hw_info = self._get_hardware_info()
+
+        # Draw info rows
+        y = panel_y + 80
+        for label, value in hw_info:
+            # Label
+            label_surf = self._font_label.render(label + ":", True, TEXT_DIM)
+            self.screen.blit(label_surf, (panel_x + 30, y))
+
+            # Value
+            value_surf = self._font_label.render(value, True, TEXT_COLOR)
+            self.screen.blit(value_surf, (panel_x + 260, y))
+
+            y += 32
+
+        # Back button
+        back_w = 140
+        back_h = 44
+        back_x = cx - back_w // 2
+        back_y = panel_y + panel_h - back_h - 20
+        back_rect = pygame.Rect(back_x, back_y, back_w, back_h)
+        self._draw_btn(back_rect, "Back", "back", mouse)
+
+        # Handle back button click (need to check in _on_click too)
+        self._hwinfo_back_rect = back_rect
+
+        # ESC hint
+        esc_surf = self._font_small.render("Press ESC to return", True, TEXT_DIM)
+        self.screen.blit(esc_surf, (cx - esc_surf.get_width() // 2, panel_y + panel_h + 15))
 
     def _make_result(self) -> Dict[str, Any]:
         return {
