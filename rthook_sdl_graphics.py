@@ -45,8 +45,20 @@ def configure_graphics_environment():
 
     existing_lib_paths = [p for p in system_lib_paths if Path(p).exists()]
     if existing_lib_paths:
-        # Prepend system paths to LD_LIBRARY_PATH so they take precedence
+        # Prepend system paths to LD_LIBRARY_PATH so they take precedence over bundled libs
         current_ld_path = os.environ.get('LD_LIBRARY_PATH', '')
+
+        # Filter out PyInstaller's _MEIPASS path to prevent bundled library conflicts
+        # This is critical because Mesa drivers need system libraries, not bundled ones
+        meipass = getattr(sys, '_MEIPASS', None)
+        if meipass:
+            # Remove PyInstaller's bundled library path from LD_LIBRARY_PATH
+            filtered_paths = [
+                p for p in current_ld_path.split(':')
+                if p and not p.startswith(meipass)
+            ]
+            current_ld_path = ':'.join(filtered_paths)
+
         new_ld_path = ':'.join(existing_lib_paths)
         if current_ld_path:
             new_ld_path = f"{new_ld_path}:{current_ld_path}"
