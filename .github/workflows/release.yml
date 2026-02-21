@@ -18,7 +18,7 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.8'
           cache: pip
 
       - name: Install dependencies
@@ -48,12 +48,12 @@ jobs:
             quay.io/pypa/manylinux_2_28_x86_64 \
             bash -c "
               set -e
-              dnf install -y python3.11
-              /usr/bin/python3.11 -m ensurepip --upgrade
-              /usr/bin/python3.11 -m pip install --upgrade pip
-              /usr/bin/python3.11 -m pip install pyinstaller
-              /usr/bin/python3.11 -m pip install -r requirements.txt
-              /usr/bin/python3.11 build_game.py
+              dnf install -y python38
+              /usr/bin/python3.8 -m ensurepip --upgrade
+              /usr/bin/python3.8 -m pip install --upgrade pip
+              /usr/bin/python3.8 -m pip install pyinstaller
+              /usr/bin/python3.8 -m pip install -r requirements.txt
+              /usr/bin/python3.8 build_game.py
             "
 
       - name: Upload artifact
@@ -85,7 +85,7 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.8'
           cache: pip
 
       - name: Install dependencies

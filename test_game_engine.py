@@ -6,8 +6,8 @@ from game_engine import GameEngine
 from game_agent import Player
 from influences import Assassin, Duke, Countess, Captain, IncomeAction, ForeignAidAction, CoupAction
 from actions import IncomeEffect, ForeignAidEffect, TaxEffect, AssassinationEffect, StealEffect, CoupEffect
-from game_state import (
 from typing import List
+from game_state import (
     PhaseLoseInfluence, PhaseReveal, RevealContext,
     PendingDecision, PlayerStateView, GameStateView,
     DecisionType, DecisionResponse,
