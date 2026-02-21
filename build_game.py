@@ -5,8 +5,9 @@ Compiles the game with PyInstaller and packages it for release.
 Usage:
     python build_game.py
 
-The RELEASE_VERSION env var is set by GitHub Actions from the git tag.
-Locally it defaults to "v0.0.0-dev".
+Environment variables (set by GitHub Actions):
+    RELEASE_VERSION  — git tag, e.g. "v1.2.3"  (defaults to "v0.0.0-dev")
+    TARGET_ARCH      — macOS only: "arm64" or "x86_64"  (defaults to host arch)
 """
 
 import os
@@ -21,6 +22,7 @@ import PyInstaller.__main__
 APP_NAME = "CoupGame"
 SPEC_FILE = "CoupGame.spec"
 VERSION = os.environ.get("RELEASE_VERSION", "v0.0.0-dev")
+TARGET_ARCH = os.environ.get("TARGET_ARCH", "")   # macOS cross-compile target
 OUTPUT_DIR = "build_output"
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -33,8 +35,13 @@ def clean():
 
 
 def compile_game():
-    print(f"Building {APP_NAME} {VERSION} via PyInstaller ({SPEC_FILE})…")
-    PyInstaller.__main__.run(["--clean", SPEC_FILE])
+    args = ["--clean", SPEC_FILE]
+    if TARGET_ARCH:
+        args += ["--target-arch", TARGET_ARCH]
+        print(f"Building {APP_NAME} {VERSION} for {TARGET_ARCH}…")
+    else:
+        print(f"Building {APP_NAME} {VERSION}…")
+    PyInstaller.__main__.run(args)
     print("PyInstaller finished.")
 
 
@@ -62,7 +69,12 @@ def package():
                     zf.write(full_path, arcname)
 
     elif system in ("Linux", "Darwin"):
-        platform_name = "macOS" if system == "Darwin" else "Linux"
+        if system == "Darwin":
+            arch = TARGET_ARCH or platform.machine()
+            platform_name = f"macOS-{arch}"
+        else:
+            platform_name = "Linux"
+
         archive_name = f"{APP_NAME}-{platform_name}-{VERSION}.tar.gz"
         archive_path = os.path.join(OUTPUT_DIR, archive_name)
         print(f"Creating TAR.GZ: {archive_name}")
