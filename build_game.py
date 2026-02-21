@@ -1,87 +1,87 @@
 """
 Build script for CoupGame.
-Compiles the game with PyInstaller and packages it for release.
+
+Creates a standalone executable using PyInstaller and packages it for distribution.
+Mirrors the build system used by the CoupLauncher repository.
 
 Usage:
     python build_game.py
 
-Environment variables (set by GitHub Actions):
-    RELEASE_VERSION  — git tag, e.g. "v1.2.3"  (defaults to "v0.0.0-dev")
-    TARGET_ARCH      — macOS only: "arm64" or "x86_64"  (defaults to host arch)
+Environment variables:
+    RELEASE_VERSION  Version string injected by GitHub Actions (e.g. "v1.0.0").
+                     Defaults to "v0.0.0-dev" when run locally.
+    TARGET_ARCH      macOS only. PyInstaller --target-arch value ("arm64",
+                     "x86_64", "universal2"). Omit for native build.
 """
 
 import os
-import platform
 import shutil
+import subprocess
+import sys
 import tarfile
 import zipfile
+from pathlib import Path
 
-import PyInstaller.__main__
-
-# ── Config ────────────────────────────────────────────────────────────────────
 APP_NAME = "CoupGame"
-SPEC_FILE = "CoupGame.spec"
+ENTRY_POINT = "coup_game.py"
+BUILD_OUTPUT = Path("build_output")
+PLATFORM = sys.platform          # "win32", "linux", "darwin"
 VERSION = os.environ.get("RELEASE_VERSION", "v0.0.0-dev")
-OUTPUT_DIR = "build_output"
-# ─────────────────────────────────────────────────────────────────────────────
+TARGET_ARCH = os.environ.get("TARGET_ARCH", "")
 
 
-def clean():
-    for folder in ("dist", "build", OUTPUT_DIR):
-        if os.path.exists(folder):
-            shutil.rmtree(folder)
-            print(f"Removed: {folder}/")
+def build() -> None:
+    print(f"Building {APP_NAME} {VERSION} for {PLATFORM}...")
+
+    for d in ("dist", "build", "__pycache__"):
+        if Path(d).exists():
+            shutil.rmtree(d)
+    BUILD_OUTPUT.mkdir(exist_ok=True)
+
+    cmd = [
+        sys.executable, "-m", "PyInstaller",
+        "--onefile",
+        "--windowed",
+        "--name", APP_NAME,
+        "--icon=coup.ico",
+        "--clean",
+        "--noconfirm",
+        ENTRY_POINT,
+    ]
+    if TARGET_ARCH and PLATFORM == "darwin":
+        cmd += ["--target-arch", TARGET_ARCH]
+
+    subprocess.run(cmd, check=True)
+    _package()
+    print("Build complete.")
 
 
-def compile_game():
-    print(f"Building {APP_NAME} {VERSION}…")
-    PyInstaller.__main__.run(["--clean", SPEC_FILE])
-    print("PyInstaller finished.")
+def _package() -> None:
+    """Wrap the PyInstaller output in a platform archive inside build_output/."""
+    if PLATFORM == "win32":
+        exe = Path("dist") / f"{APP_NAME}.exe"
+        out = BUILD_OUTPUT / f"{APP_NAME}-Windows-{VERSION}.zip"
+        print(f"Packaging {out.name}...")
+        with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.write(exe, exe.name)
 
+    elif PLATFORM == "darwin":
+        app_bundle = Path("dist") / f"{APP_NAME}.app"
+        arch_tag = f"-{TARGET_ARCH}" if TARGET_ARCH else ""
+        out = BUILD_OUTPUT / f"{APP_NAME}-macOS{arch_tag}-{VERSION}.tar.gz"
+        print(f"Packaging {out.name}...")
+        with tarfile.open(out, "w:gz") as tf:
+            tf.add(app_bundle, arcname=app_bundle.name)
 
-def write_version_file():
-    version_path = os.path.join("dist", APP_NAME, "version.txt")
-    with open(version_path, "w") as f:
-        f.write(VERSION)
-    print(f"Version file written: {version_path}")
+    else:  # Linux
+        exe = Path("dist") / APP_NAME
+        out = BUILD_OUTPUT / f"{APP_NAME}-Linux-{VERSION}.tar.gz"
+        print(f"Packaging {out.name}...")
+        with tarfile.open(out, "w:gz") as tf:
+            tf.add(exe, arcname=exe.name)
 
-
-def package():
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-    dist_folder = os.path.join("dist", APP_NAME)
-    system = platform.system()
-
-    if system == "Windows":
-        archive_name = f"{APP_NAME}-Windows-{VERSION}.zip"
-        archive_path = os.path.join(OUTPUT_DIR, archive_name)
-        print(f"Creating ZIP: {archive_name}")
-        with zipfile.ZipFile(archive_path, "w", zipfile.ZIP_DEFLATED) as zf:
-            for root, _dirs, files in os.walk(dist_folder):
-                for file in files:
-                    full_path = os.path.join(root, file)
-                    arcname = os.path.relpath(full_path, start="dist")
-                    zf.write(full_path, arcname)
-
-    elif system in ("Linux", "Darwin"):
-        if system == "Darwin":
-            platform_name = f"macOS-{platform.machine()}"
-        else:
-            platform_name = "Linux"
-
-        archive_name = f"{APP_NAME}-{platform_name}-{VERSION}.tar.gz"
-        archive_path = os.path.join(OUTPUT_DIR, archive_name)
-        print(f"Creating TAR.GZ: {archive_name}")
-        with tarfile.open(archive_path, "w:gz") as tf:
-            tf.add(dist_folder, arcname=APP_NAME)
-
-    else:
-        raise RuntimeError(f"Unsupported platform: {system}")
-
-    print(f"Release package ready: {archive_path}")
+    print(f"Archive ready: {out}")
 
 
 if __name__ == "__main__":
-    clean()
-    compile_game()
-    write_version_file()
-    package()
+    build()

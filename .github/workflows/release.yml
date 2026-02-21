@@ -77,9 +77,11 @@ jobs:
           - os: macos-latest
             name: macOS arm64
             artifact: dist-macos-arm64
-          - os: macos-13
+            target_arch: arm64
+          - os: macos-latest
             name: macOS x86_64
             artifact: dist-macos-x86_64
+            target_arch: x86_64
 
     runs-on: ${{ matrix.os }}
 
@@ -100,6 +102,7 @@ jobs:
       - name: Build game
         env:
           RELEASE_VERSION: ${{ github.ref_name }}
+          TARGET_ARCH: ${{ matrix.target_arch }}
         run: python build_game.py
 
       - name: Upload artifact
