@@ -1,37 +1,9 @@
-"""
-coup_game.py  –  Coup pygame client
-Connects automatically to coup_server.py at localhost:1235.
-Start the server first, then run this file.
-
-Usage:
-  python coup_game.py [YourName]
-  (If no name is given the title screen will ask.)
-
-Protocol: newline-delimited JSON over plain TCP.
-
-Lobby phase:
-  Client → Server: {"type": "lobby_join", "name": "<name>"}
-  Server → Client: {"type": "lobby_state", "players": ["name1", ...]}
-
-Game phase:
-  Server → Client: {"type": "state",    "data": <GameStateView dict>}
-  Client → Server: {"type": "decision", "choice": <serialized choice>}
-
-Choice serialization rules (mirror of coup_server.py):
-  PICK_ACTION      → action name string  (e.g. "Duque")
-  PICK_TARGET      → int                 (player index)
-  LOSE_INFLUENCE   → int                 (card index in hand)
-  all others       → DecisionResponse.value string  (e.g. "pass", "block")
-"""
-
 import asyncio
 import json
 import queue
 import threading
 from typing import Any
-
 import pygame
-
 from renderer import Renderer
 from game_state import (
     GameStateView,
@@ -44,18 +16,12 @@ from game_state import (
 HOST = "localhost"
 PORT = 1235
 
-
-# ── thin proxy so the Renderer can call .get_name() on deserialized actions ──
-
 class _ActionProxy:
     def __init__(self, name: str):
         self._name = name
 
     def get_name(self) -> str:
         return self._name
-
-
-# ── serialization helpers ─────────────────────────────────────────────────────
 
 def _deserialize_state(data: dict) -> GameStateView:
     players = [PlayerStateView(**p) for p in data["players"]]
@@ -408,7 +374,7 @@ if __name__ == "__main__":
     screen = pygame.display.set_mode((1280, 720), pygame.RESIZABLE)
     pygame.display.set_caption("Coup")
     clock = pygame.time.Clock()
-
+    
     config = TitleScreen(screen, clock).run()
 
     mode        = config["mode"]

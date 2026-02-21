@@ -34,7 +34,7 @@ from game_agent import Player, BotAgent
 from game_state import DecisionType, DecisionResponse, PendingDecision
 from influences import Assassin, Duke, Countess, Captain, Influence
 
-HOST = "localhost"
+HOST = "0.0.0.0"
 PORT = 1235
 MIN_PLAYERS = 4   # minimum total players; bots fill the gap
 MAX_PLAYERS = 6
@@ -67,6 +67,32 @@ def _deserialize_choice(choice_raw: Any, decision: PendingDecision) -> Influence
         return int(choice_raw)
     else:
         return DecisionResponse(choice_raw)
+
+
+# ── LAN discovery ─────────────────────────────────────────────────────────────
+
+class _DiscoveryProtocol(asyncio.DatagramProtocol):
+    """UDP responder: replies to COUP_DISCOVER broadcasts with server info."""
+
+    def __init__(self, game_server: "GameServer") -> None:
+        self._gs = game_server
+        self._transport: asyncio.DatagramTransport | None = None
+
+    def connection_made(self, transport) -> None:  # type: ignore[override]
+        self._transport = transport
+
+    def datagram_received(self, data: bytes, addr: tuple) -> None:
+        if data.strip() != b"COUP_DISCOVER" or self._transport is None:
+            return
+        gs = self._gs
+        reply = json.dumps({
+            "type":    "coup_server",
+            "port":    PORT,
+            "players": len(gs._lobby_clients),
+            "max":     MAX_PLAYERS,
+            "started": gs._game_started,
+        })
+        self._transport.sendto(reply.encode(), addr)
 
 
 # ── game server ───────────────────────────────────────────────────────────────
@@ -342,13 +368,25 @@ async def _console_loop(game_server: GameServer) -> None:
 
 async def _run_server_async(game_server: "GameServer") -> None:
     """Coroutine used by run_server_in_thread – no console loop."""
-    game_server._server_loop = asyncio.get_running_loop()
+    loop = asyncio.get_running_loop()
+    game_server._server_loop = loop
 
     async def _handler(reader, writer):
         await game_server.handle_client(reader, writer)
 
     server = await asyncio.start_server(_handler, HOST, PORT)
     print(f"[Server] Coup server listening on {HOST}:{PORT}")
+
+    # UDP discovery responder (same port number, different protocol)
+    try:
+        await loop.create_datagram_endpoint(
+            lambda: _DiscoveryProtocol(game_server),
+            local_addr=("0.0.0.0", PORT),
+        )
+        print(f"[Server] LAN discovery active on UDP {PORT}")
+    except OSError as exc:
+        print(f"[Server] Warning: could not start discovery responder: {exc}")
+
     async with server:
         await server.serve_forever()
 

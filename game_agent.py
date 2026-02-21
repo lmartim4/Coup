@@ -20,10 +20,7 @@ class PlayerAgent(ABC):
         pass
 
 
-# Number of each card type in the deck (3 of each)
 _DECK_COUNT = {"Assassino": 3, "Duque": 3, "Condessa": 3, "Capitao": 3}
-
-# Relative value of each card for discard decisions (higher = prefer to keep)
 _CARD_VALUE = {"Duque": 4, "Capitao": 3, "Assassino": 3, "Condessa": 2}
 
 
