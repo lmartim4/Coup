@@ -22,7 +22,6 @@ import PyInstaller.__main__
 APP_NAME = "CoupGame"
 SPEC_FILE = "CoupGame.spec"
 VERSION = os.environ.get("RELEASE_VERSION", "v0.0.0-dev")
-TARGET_ARCH = os.environ.get("TARGET_ARCH", "")   # macOS cross-compile target
 OUTPUT_DIR = "build_output"
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -35,13 +34,8 @@ def clean():
 
 
 def compile_game():
-    args = ["--clean", SPEC_FILE]
-    if TARGET_ARCH:
-        args += ["--target-arch", TARGET_ARCH]
-        print(f"Building {APP_NAME} {VERSION} for {TARGET_ARCH}…")
-    else:
-        print(f"Building {APP_NAME} {VERSION}…")
-    PyInstaller.__main__.run(args)
+    print(f"Building {APP_NAME} {VERSION}…")
+    PyInstaller.__main__.run(["--clean", SPEC_FILE])
     print("PyInstaller finished.")
 
 
@@ -70,8 +64,7 @@ def package():
 
     elif system in ("Linux", "Darwin"):
         if system == "Darwin":
-            arch = TARGET_ARCH or platform.machine()
-            platform_name = f"macOS-{arch}"
+            platform_name = f"macOS-{platform.machine()}"
         else:
             platform_name = "Linux"
 
