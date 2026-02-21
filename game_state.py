@@ -168,6 +168,7 @@ class GameStateView:
     current_turn: int
     pending_decision: Optional[PendingDecision]
     viewer_index: int
+    cards_per_type: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
@@ -175,4 +176,5 @@ class GameStateView:
             'current_turn':     self.current_turn,
             'pending_decision': self.pending_decision.to_dict() if self.pending_decision else None,
             'viewer_index':     self.viewer_index,
+            'cards_per_type':   self.cards_per_type,
         }

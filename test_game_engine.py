@@ -1,13 +1,3 @@
-"""
-Test suite for GameEngine — covers coins, influence losses, turn order,
-all 6 actions, challenges, blocks, and edge cases across 2-4 players.
-
-Also includes unit tests for Player, ActionEffect subclasses, Influence
-subclasses, and GameState dataclasses.
-
-Each test function is an independent scenario.  Helper make_engine() sets up
-players with the exact cards needed, so every assertion is deterministic.
-"""
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -21,9 +11,6 @@ from game_state import (
     PendingDecision, PlayerStateView, GameStateView,
     DecisionType, DecisionResponse,
 )
-
-
-# ─── helpers ──────────────────────────────────────────────────────────────────
 
 def make_engine(player_cards: list[list]) -> GameEngine:
     """Build an engine with deterministic card layouts.  All players start with 2 coins."""

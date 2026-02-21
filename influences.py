@@ -88,6 +88,9 @@ class Countess(Influence):
     def get_description(self) -> str:
         return "Bloqueia o Príncipe e o Assassino"
 
+    def get_value(self) -> int:
+        return 2
+
 
 class Assassin(Influence):
 
@@ -96,6 +99,9 @@ class Assassin(Influence):
 
     def get_description(self) -> str:
         return "Assassina a influência de alguém (custa 3 moedas)"
+
+    def get_value(self) -> int:
+        return 3
 
     def get_action(self) -> AssassinationEffect:
         return AssassinationEffect()
@@ -112,6 +118,9 @@ class Duke(Influence):
     def get_description(self) -> str:
         return "Coleta 3 moedas do tesouro"
 
+    def get_value(self) -> int:
+        return 4
+
     def get_action(self) -> TaxEffect:
         return TaxEffect()
 
@@ -123,6 +132,9 @@ class Captain(Influence):
 
     def get_description(self) -> str:
         return "Rouba 2 moedas de outro jogador"
+
+    def get_value(self) -> int:
+        return 3
 
     def get_action(self) -> StealEffect:
         return StealEffect()
@@ -168,3 +180,11 @@ class CoupAction(Influence):
 
     def get_action(self) -> CoupEffect:
         return CoupEffect()
+
+
+# Map card name → strategic keep-value, derived from each card's own definition.
+CARD_VALUE: dict[str, int] = {
+    cls().get_name(): cls().get_value()
+    for cls in (Countess, Assassin, Duke, Captain)
+    if hasattr(cls(), "get_value")
+}

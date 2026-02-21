@@ -50,6 +50,7 @@ def _deserialize_state(data: dict) -> GameStateView:
         current_turn=data["current_turn"],
         pending_decision=pending,
         viewer_index=data["viewer_index"],
+        cards_per_type=data.get("cards_per_type", {}),
     )
 
 

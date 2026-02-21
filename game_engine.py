@@ -505,9 +505,21 @@ class GameEngine:
                 revealed_influences=[inf.get_name() for inf in p.revealed_influences],
                 is_eliminated=(len(p.influences) == 0),
             ))
+
+        # Count every copy of each card type across deck + all player hands + all revealed.
+        cards_per_type: dict[str, int] = {}
+        all_cards = list(self._deck or [])
+        for p in self.players:
+            all_cards.extend(p.influences)
+            all_cards.extend(p.revealed_influences)
+        for card in all_cards:
+            name = card.get_name()
+            cards_per_type[name] = cards_per_type.get(name, 0) + 1
+
         return GameStateView(
             players=player_views,
             current_turn=self.current_turn,
             pending_decision=self.pending_decision,
             viewer_index=viewer_index,
+            cards_per_type=cards_per_type,
         )
