@@ -1,6 +1,6 @@
 import random
 
-from influences import Assassin, Duke, Countess, Captain, IncomeAction, ForeignAidAction, CoupAction
+from influences import Assassin, Duke, Captain, IncomeAction, ForeignAidAction, CoupAction
 from game_agent import Player
 from game_state import (
     PendingDecision, PlayerStateView, GameStateView,
@@ -21,14 +21,13 @@ ALL_ACTIONS = [
 
 class GameEngine:
 
-    def __init__(self, players: list[Player], deck: list = None):
+    def __init__(self, players: list[Player], deck=None):
         self.players: list[Player] = players
         self._deck: list | None = list(deck) if deck is not None else None
         self.current_turn: int = 0
-        self.pending_decision: PendingDecision | None = None
-
-        # Fases internas (substituem os pending_* do game.py original).
-        # Apenas uma fase pode estar ativa por vez; todas as outras são None.
+        
+        self.pending_decision:      PendingDecision | None = None
+        
         self._phase_action:      PhaseAction        | None = None
         self._phase_defense:     PhaseDefense       | None = None
         self._phase_challenge:   PhaseChallenge     | None = None
@@ -37,42 +36,44 @@ class GameEngine:
         self._phase_lose_inf:    PhaseLoseInfluence | None = None
         self._phase_reveal:      PhaseReveal        | None = None
 
-        self._emit_decision()
+        self._emit_pending_decision()
 
-    # ------------------------------------------------------------------ helpers
 
-    def _next_turn(self, from_idx: int) -> int:
-        """Próximo jogador vivo depois de from_idx."""
+    def _next_turn(self, from_id: int) -> int:
+        """Next alive player from_id."""
         n = len(self.players)
         for k in range(1, n + 1):
-            idx = (from_idx + k) % n
-            if self.players[idx].influences:
-                return idx
-        return from_idx  # só acontece se todos eliminados
+            id = (from_id + k) % n
+            if self.players[id].influences:
+                return id
+        return from_id
 
     def _alive_indices(self) -> list[int]:
         return [i for i, p in enumerate(self.players) if p.influences]
 
-    # ------------------------------------------------------------------ emit
-
-    def _emit_decision(self):
+    def get_winner(self) -> str | None:
+        alive = self._alive_indices()
+        return self.players[alive[0]].name if len(alive) == 1 else None
+    
+    def is_game_over(self) -> bool:
+        return len(self._alive_indices()) <= 1
+    
+    def _emit_pending_decision(self):
         """Determina qual decisão é necessária agora e popula pending_decision."""
         if self.is_game_over():
             self.pending_decision = None
             return
 
-        # Garante que current_turn aponte para um jogador vivo
         if not self.players[self.current_turn].influences:
             self.current_turn = self._next_turn(self.current_turn)
 
-        # Prioridade idêntica à do _handle_click original
         if self._phase_reveal is not None:
             rv = self._phase_reveal
             self.pending_decision = PendingDecision(
                 player_index=rv.challenged_player,
                 decision_type=DecisionType.REVEAL,
                 options=[DecisionResponse.REVEAL, DecisionResponse.REFUSE],
-                context={
+                context = {
                     'card_name':     rv.card_name,
                     'context':       rv.context,
                     'attacker_name': self.players[rv.attacker].name,
@@ -153,11 +154,9 @@ class GameEngine:
             )
 
         else:
-            # Turno normal: jogador ativo escolhe ação
             player = self.players[self.current_turn]
             if player.coins >= 10:
-                # Com 10+ moedas o Golpe é obrigatório
-                available = [a for a in ALL_ACTIONS if a.get_name() == 'Golpe']
+                available = [CoupAction()]
             else:
                 available = [a for a in ALL_ACTIONS if a.can_use(player)]
             self.pending_decision = PendingDecision(
@@ -165,8 +164,6 @@ class GameEngine:
                 decision_type=DecisionType.PICK_ACTION,
                 options=available,
             )
-
-    # ------------------------------------------------------------------ submit
 
     def submit_decision(self, choice):
         assert self.pending_decision is not None
@@ -184,9 +181,7 @@ class GameEngine:
             DecisionType.REVEAL:           self._on_reveal,
         }
         handlers[dt](choice)
-        self._emit_decision()
-
-    # ------------------------------------------------------------------ handlers
+        self._emit_pending_decision()
 
     def _on_pick_action(self, action):
         player = self.players[self.current_turn]
@@ -478,8 +473,6 @@ class GameEngine:
                 print(f"{challenged.name} {msg} {card_name}. Ação cancelada.")
                 self._lose_one_or_choose(attacker_idx, next_turn)
 
-    # ------------------------------------------------------------------ util
-
     def _lose_one_or_choose(self, player_idx: int, next_turn: int):
         """Com 1 carta: elimina automaticamente. Com 2: pede escolha."""
         player = self.players[player_idx]
@@ -496,8 +489,6 @@ class GameEngine:
                 target_idx=player_idx,
                 next_turn=next_turn,
             )
-
-    # ------------------------------------------------------------------ view
 
     def get_state_view(self, viewer_index: int) -> GameStateView:
         """Serializa o estado do jogo para um jogador específico."""
@@ -520,12 +511,3 @@ class GameEngine:
             pending_decision=self.pending_decision,
             viewer_index=viewer_index,
         )
-
-    # ------------------------------------------------------------------ state
-
-    def is_game_over(self) -> bool:
-        return len(self._alive_indices()) <= 1
-
-    def get_winner(self) -> str | None:
-        alive = self._alive_indices()
-        return self.players[alive[0]].name if len(alive) == 1 else None

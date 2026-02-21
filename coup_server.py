@@ -27,11 +27,12 @@ import json
 import random
 import sys
 import threading
+from typing import Any
 
 from game_engine import GameEngine
 from game_agent import Player, BotAgent
-from game_state import DecisionType, DecisionResponse
-from influences import Assassin, Duke, Countess, Captain
+from game_state import DecisionType, DecisionResponse, PendingDecision
+from influences import Assassin, Duke, Countess, Captain, Influence
 
 HOST = "localhost"
 PORT = 1235
@@ -43,13 +44,13 @@ BOT_NAMES = ["Bot-Alpha", "Bot-Beta", "Bot-Gamma", "Bot-Delta", "Bot-Epsilon"]
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
-def _build_deck() -> list:
-    deck = [Assassin()] * 3 + [Duke()] * 3 + [Countess()] * 3 + [Captain()] * 3
+def _build_deck() -> list[Influence]:
+    deck: list[Influence] = [Assassin()] * 3 + [Duke()] * 3 + [Countess()] * 3 + [Captain()] * 3
     random.shuffle(deck)
     return deck
 
 
-def _deal_players(names: list[str], deck: list) -> list[Player]:
+def _deal_players(names: list[str], deck: list[Influence]) -> list[Player]:
     players = []
     for name in names:
         influences = [deck.pop(), deck.pop()]
@@ -57,7 +58,7 @@ def _deal_players(names: list[str], deck: list) -> list[Player]:
     return players
 
 
-def _deserialize_choice(choice_raw, decision):
+def _deserialize_choice(choice_raw: Any, decision: PendingDecision) -> Influence | int | DecisionResponse:
     """Convert the raw JSON value from the client back to a Python game object."""
     dt = decision.decision_type
     if dt == DecisionType.PICK_ACTION:
@@ -96,7 +97,7 @@ class GameServer:
 
     # ── lobby helpers ──────────────────────────────────────────────────────────
 
-    async def _broadcast_lobby(self) -> None:
+    async def _broadcast_lobby(self):
         """Push the current lobby player list to all connected clients."""
         names = [n for n, _ in self._lobby_clients]
         msg = json.dumps({"type": "lobby_state", "players": names}) + "\n"
@@ -109,7 +110,7 @@ class GameServer:
 
     # ── game helpers ───────────────────────────────────────────────────────────
 
-    async def _send_state_to_all(self) -> None:
+    async def _send_state_to_all(self):
         """Send the current game state to every connected human, from their POV."""
         for pidx, writer in self._human_writers.items():
             state = self._engine.get_state_view(pidx)
@@ -120,7 +121,7 @@ class GameServer:
             except Exception:
                 pass
 
-    async def _tick_bots(self) -> None:
+    async def _tick_bots(self):
         """Advance the engine through consecutive bot decisions.
 
         Broadcasts the current state *before* each bot acts so that clients
@@ -141,7 +142,7 @@ class GameServer:
                   f"{choice.get_name() if hasattr(choice, 'get_name') else choice}")
             self._engine.submit_decision(choice)
 
-    async def _game_loop(self) -> None:
+    async def _game_loop(self):
         """Main game loop: drives decisions and broadcasts state after each move."""
         await self._tick_bots()
         await self._send_state_to_all()
@@ -180,7 +181,7 @@ class GameServer:
 
     async def handle_client(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
-    ) -> None:
+    ):
         addr = writer.get_extra_info("peername")
         print(f"[Server] New connection from {addr}")
 
@@ -264,18 +265,18 @@ class GameServer:
 
     # ── programmatic start helpers ─────────────────────────────────────────────
 
-    def request_start_threadsafe(self) -> None:
+    def request_start_threadsafe(self):
         """Call from any thread to request game start (host button, etc.)."""
         if self._server_loop is not None and not self._game_started:
             asyncio.run_coroutine_threadsafe(self._do_start(), self._server_loop)
 
-    async def _do_start(self) -> None:
+    async def _do_start(self):
         if not self._game_started and self._lobby_clients:
             await self.start_game()
 
     # ── game setup ─────────────────────────────────────────────────────────────
 
-    async def start_game(self) -> None:
+    async def start_game(self):
         """Build the game, assign indices, and start the game loop."""
         async with self._lobby_lock:
             if self._game_started:

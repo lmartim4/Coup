@@ -1,6 +1,14 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING
+
 from actions import (ActionEffect, AssassinationEffect, StealEffect, TaxEffect,
                      IncomeEffect, ForeignAidEffect, CoupEffect)
+
+if TYPE_CHECKING:
+    from game_agent import Player
+
 
 class Influence(ABC):
 
@@ -22,7 +30,7 @@ class Influence(ABC):
         """The action this card enables, or None if purely defensive."""
         return None
 
-    def get_blockers(self) -> list[type['Influence']]:
+    def get_blockers(self) -> list[type[Influence]]:
         """Influence types that can block this card's action. Empty = unblockable."""
         return []
 
@@ -32,7 +40,7 @@ class Influence(ABC):
         action = self.get_action()
         return action.requires_target() if action else False
 
-    def can_use(self, player) -> bool:
+    def can_use(self, player: Player) -> bool:
         action = self.get_action()
         return action.can_use(player) if action else True
 
@@ -44,12 +52,12 @@ class Influence(ABC):
         blockers = self.get_blockers()
         return blockers[0]().get_name() if blockers else None
 
-    def apply(self, player, target=None):
+    def apply(self, player: Player, target: Player | None = None) -> None:
         action = self.get_action()
         if action:
             action.apply(player, target)
 
-    def apply_cost(self, player):
+    def apply_cost(self, player: Player) -> None:
         action = self.get_action()
         if action:
             action.apply_cost(player)
@@ -68,7 +76,7 @@ class Influence(ABC):
         action = self.get_action()
         return action.is_open_blockable() if action else False
 
-    def apply_effect(self, player, target=None):
+    def apply_effect(self, player: Player, target: Player | None = None) -> None:
         action = self.get_action()
         if action:
             action.apply_effect(player, target)
@@ -76,19 +84,19 @@ class Influence(ABC):
 
 class Countess(Influence):
 
-    def get_name(self):
+    def get_name(self) -> str:
         return "Condessa"
 
-    def get_description(self):
+    def get_description(self) -> str:
         return "Bloqueia o Príncipe e o Assassino"
 
 
 class Assassin(Influence):
 
-    def get_name(self):
+    def get_name(self) -> str:
         return "Assassino"
 
-    def get_description(self):
+    def get_description(self) -> str:
         return "Assassina a influência de alguém (custa 3 moedas)"
 
     def get_action(self) -> AssassinationEffect:
@@ -100,10 +108,10 @@ class Assassin(Influence):
 
 class Duke(Influence):
 
-    def get_name(self):
+    def get_name(self) -> str:
         return "Duque"
 
-    def get_description(self):
+    def get_description(self) -> str:
         return "Coleta 3 moedas do tesouro"
 
     def get_action(self) -> TaxEffect:
@@ -112,10 +120,10 @@ class Duke(Influence):
 
 class Captain(Influence):
 
-    def get_name(self):
+    def get_name(self) -> str:
         return "Capitao"
 
-    def get_description(self):
+    def get_description(self) -> str:
         return "Rouba 2 moedas de outro jogador"
 
     def get_action(self) -> StealEffect:
@@ -124,12 +132,13 @@ class Captain(Influence):
     def get_blockers(self) -> list[type[Influence]]:
         return [Captain]
 
+
 class IncomeAction(Influence):
 
-    def get_name(self):
+    def get_name(self) -> str:
         return "Renda"
 
-    def get_description(self):
+    def get_description(self) -> str:
         return "Pega 1 moeda do tesouro"
 
     def get_action(self) -> IncomeEffect:
@@ -138,10 +147,10 @@ class IncomeAction(Influence):
 
 class ForeignAidAction(Influence):
 
-    def get_name(self):
+    def get_name(self) -> str:
         return "Ajuda Externa"
 
-    def get_description(self):
+    def get_description(self) -> str:
         return "Pega 2 moedas (bloqueável pelo Duque)"
 
     def get_action(self) -> ForeignAidEffect:
@@ -153,10 +162,10 @@ class ForeignAidAction(Influence):
 
 class CoupAction(Influence):
 
-    def get_name(self):
+    def get_name(self) -> str:
         return "Golpe"
 
-    def get_description(self):
+    def get_description(self) -> str:
         return "Paga 7 moedas para eliminar uma influência do alvo"
 
     def get_action(self) -> CoupEffect:

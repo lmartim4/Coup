@@ -1,13 +1,20 @@
+from __future__ import annotations
+
 from abc import ABC
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from game_agent import Player
+
 
 class ActionEffect(ABC):
     def requires_target(self) -> bool:
         return False
 
-    def can_use(self, player) -> bool:
+    def can_use(self, player: Player) -> bool:
         return True
 
-    def apply_cost(self, player):
+    def apply_cost(self, player: Player) -> None:
         """Upfront cost paid when declaring the action (before defense resolves)."""
         pass
 
@@ -22,11 +29,11 @@ class ActionEffect(ABC):
         """True se qualquer jogador (não só o alvo) pode bloquear a ação."""
         return False
 
-    def apply_effect(self, player, target=None):
+    def apply_effect(self, player: Player, target: Player | None = None) -> None:
         """Effect applied after the action resolves (not blocked)."""
         pass
 
-    def apply(self, player, target=None):
+    def apply(self, player: Player, target: Player | None = None) -> None:
         """Full effect for actions that skip the defense phase."""
         self.apply_effect(player, target)
 
@@ -37,10 +44,10 @@ class AssassinationEffect(ActionEffect):
     def requires_target(self) -> bool:
         return True
 
-    def can_use(self, player) -> bool:
+    def can_use(self, player: Player) -> bool:
         return player.coins >= 3
 
-    def apply_cost(self, player):
+    def apply_cost(self, player: Player) -> None:
         player.coins -= 3
 
     def causes_influence_loss(self) -> bool:
@@ -53,20 +60,20 @@ class StealEffect(ActionEffect):
     def requires_target(self) -> bool:
         return True
 
-    def apply_effect(self, player, target=None):
+    def apply_effect(self, player: Player, target: Player | None = None) -> None:
         assert target is not None
         stolen = min(2, target.coins)
         player.coins += stolen
         target.coins -= stolen
 
-    def apply(self, player, target=None):
+    def apply(self, player: Player, target: Player | None = None) -> None:
         self.apply_effect(player, target)
 
 
 class TaxEffect(ActionEffect):
     """Collect 3 coins from the treasury."""
 
-    def apply(self, player, target=None):
+    def apply(self, player: Player, target: Player | None = None) -> None:
         player.coins += 3
 
 
@@ -76,7 +83,7 @@ class IncomeEffect(ActionEffect):
     def is_challengeable(self) -> bool:
         return False
 
-    def apply(self, player, target=None):
+    def apply(self, player: Player, target: Player | None = None) -> None:
         player.coins += 1
 
 
@@ -89,7 +96,7 @@ class ForeignAidEffect(ActionEffect):
     def is_open_blockable(self) -> bool:
         return True
 
-    def apply_effect(self, player, target=None):
+    def apply_effect(self, player: Player, target: Player | None = None) -> None:
         player.coins += 2
 
 
@@ -99,10 +106,10 @@ class CoupEffect(ActionEffect):
     def requires_target(self) -> bool:
         return True
 
-    def can_use(self, player) -> bool:
+    def can_use(self, player: Player) -> bool:
         return player.coins >= 7
 
-    def apply_cost(self, player):
+    def apply_cost(self, player: Player) -> None:
         player.coins -= 7
 
     def causes_influence_loss(self) -> bool:

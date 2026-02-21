@@ -8,6 +8,8 @@ Returns a dict:
   {"mode": "solo"|"host"|"join", "name": str, "host_ip": str, "host_port": int}
 """
 
+from typing import Any
+
 import pygame
 
 # ── palette (mirrors renderer.py) ─────────────────────────────────────────────
@@ -46,7 +48,7 @@ class TitleScreen:
     CONFIRM_W = 160
     CONFIRM_H = 48
 
-    def __init__(self, screen: pygame.Surface, clock: pygame.time.Clock) -> None:
+    def __init__(self, screen: pygame.Surface, clock: pygame.time.Clock):
         self.screen = screen
         self.clock  = clock
 
@@ -64,7 +66,7 @@ class TitleScreen:
 
     # ── public ────────────────────────────────────────────────────────────────
 
-    def run(self) -> dict:
+    def run(self) -> dict[str, Any]:
         """Blocking loop; returns config dict when user confirms."""
         while True:
             mouse = pygame.mouse.get_pos()
@@ -97,7 +99,7 @@ class TitleScreen:
 
     # ── event handlers ────────────────────────────────────────────────────────
 
-    def _on_click(self, pos: tuple, mouse: tuple):
+    def _on_click(self, pos: tuple[int, int], mouse: tuple[int, int]) -> dict[str, Any] | None:
         W, H = self.screen.get_size()
 
         if self._state == "main":
@@ -171,7 +173,7 @@ class TitleScreen:
 
     # ── drawing ───────────────────────────────────────────────────────────────
 
-    def _draw_main(self, mouse: tuple) -> None:
+    def _draw_main(self, mouse: tuple[int, int]) -> None:
         W, H = self.screen.get_size()
         cx = W // 2
 
@@ -194,7 +196,7 @@ class TitleScreen:
             rect = pygame.Rect(bx, y, self.BTN_W, self.BTN_H)
             self._draw_btn(rect, label, mode, mouse)
 
-    def _draw_input(self, mouse: tuple) -> None:
+    def _draw_input(self, mouse: tuple[int, int]) -> None:
         W, H = self.screen.get_size()
         cx = W // 2
 
@@ -265,7 +267,7 @@ class TitleScreen:
                                 rect.centery - surf.get_height() // 2))
 
     def _draw_btn(self, rect: pygame.Rect, label: str,
-                  mode: str, mouse: tuple) -> None:
+                  mode: str, mouse: tuple[int, int]) -> None:
         color, hover = _BTN_COLORS.get(mode, _BTN_COLORS["confirm"])
         hovered = rect.collidepoint(mouse)
         pygame.draw.rect(self.screen, hover if hovered else color,
@@ -275,7 +277,7 @@ class TitleScreen:
         self.screen.blit(surf, (rect.centerx - surf.get_width() // 2,
                                 rect.centery - surf.get_height() // 2))
 
-    def _make_result(self) -> dict:
+    def _make_result(self) -> dict[str, Any]:
         return {
             "mode":      self._mode,
             "name":      (self._name_buf.strip() or "Player")[:20],

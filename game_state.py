@@ -1,6 +1,8 @@
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Optional
+from typing import Optional
+
+from influences import Influence
 
 class DecisionType(Enum):
     PICK_ACTION      = 'pick_action'
@@ -22,13 +24,6 @@ class DecisionResponse(Enum):
     REVEAL       = 'reveal'
     REFUSE       = 'refuse'
 
-
-# ── Internal engine phases ────────────────────────────────────────────────────
-#
-# Each _phase_* attribute in GameEngine holds exactly one of these dataclasses
-# (or None). Using typed dataclasses instead of raw dicts / tuples lets the
-# code (and type-checkers) know exactly what fields to expect in each phase.
-
 class RevealContext(str, Enum):
     """Why a player is being asked to reveal (or refuse) a card."""
     DOUBT_ACTION = 'doubt_action'  # defender doubted the attacker's claimed card
@@ -39,14 +34,14 @@ class RevealContext(str, Enum):
 @dataclass
 class PhaseAction:
     """Current player picked an action that needs a target — waiting for target."""
-    action: Any  # Influence
+    action: Influence
 
 
 @dataclass
 class PhaseDefense:
     """Target player must decide how to react to an incoming action."""
     target_idx: int
-    action: Any  # Influence
+    action: Influence
 
 
 @dataclass
@@ -54,7 +49,7 @@ class PhaseChallenge:
     """Other players can doubt an announced card-action (e.g. Duke tax).
     queue: remaining player indices that haven't passed yet."""
     actor: int
-    action: Any  # Influence
+    action: Influence
     queue: list[int]
 
 
@@ -64,7 +59,7 @@ class PhaseDoubtBlock:
     queue: remaining player indices that haven't passed yet."""
     attacker: int
     target: int   # the blocker
-    action: Any   # Influence (the original action being blocked)
+    action: Influence  # the original action being blocked
     queue: list[int]
 
 
@@ -73,7 +68,7 @@ class PhaseBlockOpen:
     """Any player may block an open action (e.g. Foreign Aid → Duke).
     queue: remaining player indices that haven't passed yet."""
     actor: int
-    action: Any   # Influence
+    action: Influence
     queue: list[int]
 
 
@@ -93,7 +88,7 @@ class PhaseReveal:
     context: RevealContext
     attacker: int
     target: int
-    action: Any  # Influence
+    action: Influence
     next_turn: int
     doubter: Optional[int] = None
 

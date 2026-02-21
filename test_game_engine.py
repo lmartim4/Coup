@@ -402,8 +402,11 @@ def test_coup_target_1_card_eliminated():
 def test_10_coins_forces_coup_only():
     eng = make_engine([[Duke(), Assassin()], [Captain(), Countess()]])
     eng.players[0].coins = 10
-    eng._emit_decision()
+    eng._emit_pending_decision()
     assert pd(eng).decision_type == DecisionType.PICK_ACTION
+    
+    print(isinstance(pd(eng).options, list))
+    
     assert pd(eng).options == [CoupAction()]
 
 def test_coup_skips_eliminated_player_in_turn():
@@ -479,20 +482,20 @@ def test_available_actions_at_2_coins():
 def test_assassination_available_at_3_coins():
     eng = make_engine([[Duke(), Assassin()], [Captain(), Countess()]])
     eng.players[0].coins = 3
-    eng._emit_decision()
+    eng._emit_pending_decision()
     assert Assassin() in pd(eng).options
 
 def test_coup_available_at_7_coins():
     eng = make_engine([[Duke(), Assassin()], [Captain(), Countess()]])
     eng.players[0].coins = 7
-    eng._emit_decision()
+    eng._emit_pending_decision()
     assert CoupAction() in pd(eng).options
 
 def test_all_actions_available_at_7_coins_except_forced_coup():
     """At 7 coins all costly actions are available, but not forced-coup yet."""
     eng = make_engine([[Duke(), Assassin()], [Captain(), Countess()]])
     eng.players[0].coins = 7
-    eng._emit_decision()
+    eng._emit_pending_decision()
     opts = pd(eng).options
     assert Assassin()     in opts
     assert CoupAction()   in opts
@@ -1170,19 +1173,19 @@ def test_assassination_unavailable_at_2_coins():
 def test_assassination_available_at_exactly_3_coins():
     eng = make_engine([[Assassin(), Duke()], [Captain(), Countess()]])
     eng.players[0].coins = 3
-    eng._emit_decision()
+    eng._emit_pending_decision()
     assert Assassin() in pd(eng).options
 
 def test_coup_unavailable_at_6_coins():
     eng = make_engine([[Duke(), Assassin()], [Captain(), Countess()]])
     eng.players[0].coins = 6
-    eng._emit_decision()
+    eng._emit_pending_decision()
     assert CoupAction() not in pd(eng).options
 
 def test_coup_available_at_exactly_7_coins():
     eng = make_engine([[Duke(), Assassin()], [Captain(), Countess()]])
     eng.players[0].coins = 7
-    eng._emit_decision()
+    eng._emit_pending_decision()
     assert CoupAction() in pd(eng).options
 
 def test_no_pending_decision_when_game_already_over():

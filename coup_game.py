@@ -28,6 +28,7 @@ import asyncio
 import json
 import queue
 import threading
+from typing import Any
 
 import pygame
 
@@ -47,7 +48,7 @@ PORT = 1235
 # ── thin proxy so the Renderer can call .get_name() on deserialized actions ──
 
 class _ActionProxy:
-    def __init__(self, name: str) -> None:
+    def __init__(self, name: str):
         self._name = name
 
     def get_name(self) -> str:
@@ -86,7 +87,7 @@ def _deserialize_state(data: dict) -> GameStateView:
     )
 
 
-def _serialize_choice(choice) -> object:
+def _serialize_choice(choice: Any) -> str | int:
     """Convert a click result into a JSON-safe value for the server."""
     if isinstance(choice, _ActionProxy):
         return choice.get_name()
@@ -114,7 +115,7 @@ class CoupGame:
         server_ref=None,
         screen: pygame.Surface | None = None,
         clock: pygame.time.Clock | None = None,
-    ) -> None:
+    ):
         self._player_name = player_name
         self._host        = host
         self._port        = port
@@ -132,7 +133,7 @@ class CoupGame:
 
         # Shared state between pygame thread and network thread.
         self._state: GameStateView | None = None
-        self._clickable: list = []
+        self._clickable: list[tuple[pygame.Rect, Any]] = []
         self._game_over: bool = False
         self._status_msg: str = f"Connecting to {host}:{port}…"
 
@@ -140,17 +141,17 @@ class CoupGame:
         self._start_btn_rect: pygame.Rect | None = None
 
         # Thread-safe channels.
-        self._state_queue: queue.Queue = queue.Queue()    # network → pygame
-        self._decision_queue: queue.Queue = queue.Queue()  # pygame → network
+        self._state_queue: queue.Queue[GameStateView] = queue.Queue()    # network → pygame
+        self._decision_queue: queue.Queue[str | int] = queue.Queue()  # pygame → network
 
         # Speech-bubble deduplication key (prevents re-triggering the same announcement).
-        self._last_bubble_key: tuple | None = None
+        self._last_bubble_key: tuple[Any, ...] | None = None
         # Tracks the last current_turn seen, used to detect Renda (no-announcement action).
         self._prev_turn: int | None = None
 
     # ── pygame loop ────────────────────────────────────────────────────────────
 
-    def run(self) -> None:
+    def run(self):
         net_thread = threading.Thread(target=self._network_thread, daemon=True)
         net_thread.start()
 
@@ -192,7 +193,7 @@ class CoupGame:
 
         pygame.quit()
 
-    def _draw_status(self, msg: str, mouse_pos: tuple = (0, 0)) -> None:
+    def _draw_status(self, msg: str, mouse_pos: tuple[int, int] = (0, 0)) -> None:
         font = pygame.font.SysFont(None, 36)
         W, H = self.screen.get_size()
         lines = msg.split("\n")
@@ -222,7 +223,7 @@ class CoupGame:
             ))
             self._start_btn_rect = rect
 
-    def _handle_click(self, pos: tuple) -> None:
+    def _handle_click(self, pos: tuple[int, int]) -> None:
         # Lobby "Start Game" button (host mode, before game state arrives)
         if (self._state is None
                 and self._is_host
@@ -313,7 +314,7 @@ class CoupGame:
     def _network_thread(self) -> None:
         asyncio.run(self._async_network())
 
-    async def _async_network(self) -> None:
+    async def _async_network(self):
         while not self._game_over:
             try:
                 reader, writer = await asyncio.open_connection(self._host, self._port)
@@ -384,7 +385,7 @@ class CoupGame:
                 self._status_msg = "Reconnecting…"
                 await asyncio.sleep(1)
 
-    async def _send_loop(self, writer: asyncio.StreamWriter) -> None:
+    async def _send_loop(self, writer: asyncio.StreamWriter):
         """Forwards choices from the pygame thread to the server."""
         while True:
             try:
