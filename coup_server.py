@@ -144,6 +144,86 @@ class GameServer:
             except Exception:
                 pass
 
+    async def broadcast_info(self, text: str,
+                              actor_idx: Optional[int] = None,
+                              target_idx: Optional[int] = None) -> None:
+        """Broadcast a narrative info message to all human clients immediately.
+
+        Also appends the text to the engine's event log so it appears in the
+        in-game event-log panel on the next state update.
+        """
+        if hasattr(self, '_engine'):
+            self._engine._log(text)
+        msg = json.dumps({
+            "type":       "info",
+            "text":       text,
+            "actor_idx":  actor_idx,
+            "target_idx": target_idx,
+        }) + "\n"
+        for writer in self._human_writers.values():
+            try:
+                writer.write(msg.encode())
+                await writer.drain()
+            except Exception:
+                pass
+
+    def _narrate_decision(self, player_idx: int,
+                           decision, choice) -> str:
+        """Compose a human-readable sentence describing what a player just chose."""
+        pname = self._engine.players[player_idx].name
+        dt    = decision.decision_type
+        ctx   = decision.context
+        choice_str = (choice.value      if hasattr(choice, 'value')    else
+                      choice.get_name() if hasattr(choice, 'get_name') else
+                      str(choice))
+
+        if dt == DecisionType.PICK_ACTION:
+            return f"{pname} escolhe: {choice_str}"
+        elif dt == DecisionType.PICK_TARGET:
+            target_name = (self._engine.players[choice].name
+                           if isinstance(choice, int) and choice < len(self._engine.players)
+                           else '?')
+            return f"{pname} usa {ctx.get('action_name', '')} em {target_name}"
+        elif dt == DecisionType.DEFEND:
+            attacker = ctx.get('attacker_name', '?')
+            action   = ctx.get('action_name', '?')
+            if choice_str == 'block':
+                return f"{pname} bloqueia {action} de {attacker} com {ctx.get('block_card', '?')}"
+            elif choice_str == 'doubt_action':
+                return f"{pname} duvida que {attacker} tem {action}!"
+            else:
+                return f"{pname} aceita o ataque de {attacker}"
+        elif dt == DecisionType.CHALLENGE_ACTION:
+            actor  = ctx.get('actor_name', '?')
+            action = ctx.get('action_name', '?')
+            if choice_str == 'doubt':
+                return f"{pname} desafia {actor}! Duvida de {action}"
+            else:
+                return f"{pname} passa — não duvida de {actor}"
+        elif dt == DecisionType.CHALLENGE_BLOCK:
+            blocker = ctx.get('blocker_name', '?')
+            card    = ctx.get('block_card', '?')
+            if choice_str == 'doubt':
+                return f"{pname} desafia o bloqueio de {blocker} com {card}!"
+            else:
+                return f"{pname} aceita o bloqueio de {blocker}"
+        elif dt == DecisionType.BLOCK_OR_PASS:
+            actor  = ctx.get('actor_name', '?')
+            action = ctx.get('action_name', '?')
+            if choice_str == 'block':
+                return f"{pname} bloqueia {action} de {actor} com {ctx.get('block_card', '?')}!"
+            else:
+                return f"{pname} passa"
+        elif dt == DecisionType.LOSE_INFLUENCE:
+            return f"{pname} escolhe qual influência perder"
+        elif dt == DecisionType.REVEAL:
+            card = ctx.get('card_name', '?')
+            if choice_str == 'reveal':
+                return f"{pname} revela: tenho {card}!"
+            else:
+                return f"{pname} recusa revelar {card}"
+        return f"{pname}: {choice_str}"
+
     async def _tick_bots(self):
         """Advance the engine through consecutive bot decisions.
 
@@ -162,9 +242,13 @@ class GameServer:
             choice = agent.decide(state_view, decision)
             pname = self._engine.players[decision.player_index].name
             await asyncio.sleep(random.uniform(0.5, 5.0))
+            narration = self._narrate_decision(decision.player_index, decision, choice)
             print(f"  [{pname}] {decision.decision_type.value} → "
                   f"{choice.get_name() if hasattr(choice, 'get_name') else choice}")
             self._engine.submit_decision(choice)
+            # Broadcast narration AFTER submit so the engine log is up-to-date
+            await self.broadcast_info(narration,
+                                      actor_idx=decision.player_index)
 
     async def _game_loop(self):
         """Main game loop: drives decisions and broadcasts state after each move."""
@@ -195,9 +279,11 @@ class GameServer:
                 continue
 
             pname = self._engine.players[pidx].name
+            narration = self._narrate_decision(pidx, decision, choice)
             print(f"  [{pname}] {decision.decision_type.value} → "
                   f"{choice.get_name() if hasattr(choice, 'get_name') else choice}")
             self._engine.submit_decision(choice)
+            await self.broadcast_info(narration, actor_idx=pidx)
             await self._tick_bots()
             await self._send_state_to_all()
 

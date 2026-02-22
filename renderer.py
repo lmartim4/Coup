@@ -185,6 +185,9 @@ class Renderer:
     BTN_H   = 36
     BTN_GAP = 10
 
+    # Top status banner
+    BANNER_H = 48
+
     # --- Paleta ---
     BG_COLOR             = (40,  40,  60)
     TABLE_COLOR          = (30,  75,  40)
@@ -227,11 +230,25 @@ class Renderer:
     PASS_HOVER    = (90,   90,  90)
     BTN_BORDER    = (200, 200, 220)
 
+    # Banner accent colours per decision type
+    _BANNER_COLORS = {
+        DecisionType.PICK_ACTION:      (30,  70,  30),   # green — player's turn
+        DecisionType.PICK_TARGET:      (80,  55,  10),   # amber — targeting
+        DecisionType.DEFEND:           (90,  20,  20),   # red   — under attack
+        DecisionType.CHALLENGE_ACTION: (55,  25,  85),   # purple — card claim
+        DecisionType.CHALLENGE_BLOCK:  (55,  25,  85),   # purple — block claim
+        DecisionType.BLOCK_OR_PASS:    (20,  50,  90),   # blue   — open action
+        DecisionType.LOSE_INFLUENCE:   (90,  15,  15),   # dark red — losing card
+        DecisionType.REVEAL:           (75,  65,   5),   # gold — reveal challenge
+    }
+
     def __init__(self, screen: pygame.Surface, font: pygame.font.Font):
         self.screen       = screen
         self.font         = font
         self._bubble_font = pygame.font.SysFont(None, 22, bold=True)
         self._bubbles: List[SpeechBubble] = []
+        self._banner_font = pygame.font.SysFont(None, 26, bold=True)
+        self._log_font    = pygame.font.SysFont(None, 18)
 
     def clear(self):
         self.screen.fill(self.BG_COLOR)
@@ -249,11 +266,12 @@ class Renderer:
         Calcula a posição central do painel de cada jogador distribuindo-os
         simetricamente ao redor de uma elipse.
         O viewer fica sempre na posição inferior (ângulo π/2 nas coordenadas pygame).
+        Shifts the table centre down by BANNER_H//2 so the top banner doesn't overlap.
         """
         tcx = W * _TABLE_CX_RATIO
-        tcy = H * _TABLE_CY_RATIO
+        tcy = H * _TABLE_CY_RATIO + self.BANNER_H // 2
         rx  = W * 0.38
-        ry  = H * 0.30
+        ry  = H * 0.28   # slightly reduced vertical radius to fit within banner offset
 
         positions = []
         for i in range(n):
@@ -274,8 +292,9 @@ class Renderer:
         is_my_decision = (decision is not None and
                           decision.player_index == state.viewer_index)
 
+        # Table centre (shifted down for banner)
         tcx = int(W * _TABLE_CX_RATIO)
-        tcy = int(H * _TABLE_CY_RATIO)
+        tcy = int(H * _TABLE_CY_RATIO) + self.BANNER_H // 2
 
         # Mesa decorativa + cartas reveladas sobre ela
         self._draw_table(tcx, tcy, W, H)
@@ -342,6 +361,12 @@ class Renderer:
                 new = self._draw_decision_btns(decision, state, btn_y, mouse_pos)
                 clickable.extend(new)
 
+        # Top status banner (drawn over background, under bubbles)
+        self._draw_top_banner(state)
+
+        # Event log panel (bottom-left corner)
+        self._draw_event_log(state)
+
         # Speech bubbles (drawn on top of everything)
         self._draw_bubbles()
 
@@ -351,11 +376,117 @@ class Renderer:
 
         return clickable
 
+    # ------------------------------------------------------------------ top banner
+
+    def _compute_phase_text(self, state: GameStateView) -> Tuple[str, Tuple[int, int, int]]:
+        """Return (description, accent_colour) for the current pending decision."""
+        pd = state.pending_decision
+        if pd is None:
+            return "Jogo encerrado", (40, 40, 40)
+
+        dt    = pd.decision_type
+        ctx   = pd.context
+        pname = state.players[pd.player_index].name if pd.player_index < len(state.players) else '?'
+        color = self._BANNER_COLORS.get(dt, (40, 40, 60))
+
+        if dt == DecisionType.PICK_ACTION:
+            turn_player = state.players[state.current_turn].name if state.current_turn < len(state.players) else '?'
+            return f"Vez de {turn_player} — escolha uma ação", color
+
+        elif dt == DecisionType.PICK_TARGET:
+            action = ctx.get('action_name', '?')
+            return f"{pname} usa {action} — escolhendo alvo", color
+
+        elif dt == DecisionType.DEFEND:
+            attacker = ctx.get('attacker_name', '?')
+            action   = ctx.get('action_name', '?')
+            return f"{pname} defende: {attacker} usa {action}", color
+
+        elif dt == DecisionType.CHALLENGE_ACTION:
+            actor  = ctx.get('actor_name', '?')
+            action = ctx.get('action_name', '?')
+            return f"{actor} anuncia {action} — {pname} pode duvidar", color
+
+        elif dt == DecisionType.CHALLENGE_BLOCK:
+            blocker = ctx.get('blocker_name', '?')
+            card    = ctx.get('block_card', '?')
+            return f"{blocker} bloqueia com {card} — {pname} pode contestar", color
+
+        elif dt == DecisionType.BLOCK_OR_PASS:
+            actor  = ctx.get('actor_name', '?')
+            action = ctx.get('action_name', '?')
+            return f"{actor} anuncia {action} — {pname} pode bloquear", color
+
+        elif dt == DecisionType.LOSE_INFLUENCE:
+            return f"{pname} deve perder uma influência!", color
+
+        elif dt == DecisionType.REVEAL:
+            card = ctx.get('card_name', '?')
+            return f"{pname} deve provar que tem {card}", color
+
+        return "...", color
+
+    def _draw_top_banner(self, state: GameStateView):
+        """Full-width status bar at the very top showing the current game phase."""
+        W = self.screen.get_width()
+        text, accent = self._compute_phase_text(state)
+
+        # Dark background strip
+        banner_rect = pygame.Rect(0, 0, W, self.BANNER_H)
+        pygame.draw.rect(self.screen, (12, 12, 22), banner_rect)
+
+        # Coloured accent line at the bottom of the banner
+        pygame.draw.rect(self.screen, accent,
+                         pygame.Rect(0, self.BANNER_H - 4, W, 4))
+
+        # Phase description text centred in the banner
+        surf = self._banner_font.render(text, True, (215, 215, 255))
+        self.screen.blit(surf, (
+            W // 2 - surf.get_width() // 2,
+            (self.BANNER_H - 4) // 2 - surf.get_height() // 2,
+        ))
+
+    # ------------------------------------------------------------------ event log
+
+    def _draw_event_log(self, state: GameStateView):
+        """Semi-transparent event-log panel in the bottom-left corner."""
+        log = state.event_log
+        if not log:
+            return
+
+        MAX_ENTRIES = 7
+        shown       = log[-MAX_ENTRIES:]
+        W, H        = self.screen.get_size()
+
+        LINE_H  = 19
+        PAD     = 7
+        LOG_W   = 360
+        LOG_H   = len(shown) * LINE_H + PAD * 2
+
+        log_x = 8
+        log_y = H - LOG_H - 8
+
+        # Semi-transparent background
+        panel = pygame.Surface((LOG_W, LOG_H), pygame.SRCALPHA)
+        panel.fill((8, 8, 18, 190))
+        self.screen.blit(panel, (log_x, log_y))
+        pygame.draw.rect(self.screen, (50, 50, 75),
+                         (log_x, log_y, LOG_W, LOG_H), width=1)
+
+        n = len(shown)
+        for i, entry in enumerate(shown):
+            # Oldest entries are dimmer; newest are bright
+            brightness = int(100 + 155 * (i / max(n - 1, 1)))
+            color = (brightness, brightness, min(255, brightness + 30))
+            # Truncate long lines to fit the panel
+            surf = self._log_font.render(entry[:60], True, color)
+            self.screen.blit(surf, (log_x + PAD, log_y + PAD + i * LINE_H))
+
     # ------------------------------------------------------------------ sub-renders
 
     def _draw_table(self, cx: int, cy: int, W: int, H: int):
         rx = int(W * 0.22)
-        ry = int(H * 0.17)
+        ry = int(H * 0.16)
         rect = pygame.Rect(cx - rx, cy - ry, 2 * rx, 2 * ry)
         pygame.draw.ellipse(self.screen, self.TABLE_COLOR, rect)
         pygame.draw.ellipse(self.screen, self.TABLE_BORDER, rect, width=4)
@@ -614,7 +745,7 @@ class Renderer:
         cx, cy = seats[player_idx]
         ph     = self._panel_height(state.players[player_idx])
         scx    = W // 2
-        scy    = H // 2
+        scy    = H // 2 + self.BANNER_H // 2   # shifted centre matches seat_positions
 
         dx = cx - scx
         dy = cy - scy

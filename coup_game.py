@@ -168,6 +168,8 @@ def _deserialize_state(data: dict) -> GameStateView:
         pending_decision=pending,
         viewer_index=data["viewer_index"],
         cards_per_type=data.get("cards_per_type", {}),
+        event_log=data.get("event_log", []),
+        last_action=data.get("last_action"),
     )
 
 
@@ -231,6 +233,8 @@ class CoupGame:
         self._last_bubble_key: Optional[Tuple[Any, ...]]= None
         # Tracks the last current_turn seen, used to detect Renda (no-announcement action).
         self._prev_turn: Optional[int]= None
+        # Tracks last processed last_action seq (post-decision bubbles deduplication).
+        self._last_action_seq: int = -1
 
     # ── pygame loop ────────────────────────────────────────────────────────────
 
@@ -332,6 +336,19 @@ class CoupGame:
                 break
 
     def _check_and_spawn_bubble(self, state: GameStateView) -> None:
+        # ── Post-decision bubbles (response to what someone just chose) ────────
+        # These cover "Dúvida!", "Aceito", "Perco X!", "Tenho X!", "Recuso!" etc.
+        la = state.last_action
+        if la is not None:
+            la_seq = la.get('seq', -1)
+            if la_seq != self._last_action_seq:
+                self._last_action_seq = la_seq
+                bubble_text = la.get('text', '')
+                pidx        = la.get('player_idx', 0)
+                if bubble_text and pidx < len(state.players):
+                    self.renderer.add_bubble(bubble_text, pidx, state)
+
+        # ── Pre-decision announcement bubbles (what someone is claiming) ───────
         pd = state.pending_decision
         if pd is None:
             return
@@ -340,6 +357,7 @@ class CoupGame:
         dt   = pd.decision_type
         turn = state.current_turn  # disambiguates the same player acting on different turns
 
+        # Detect Income (Renda): turn advanced without any announcement being made.
         if (self._prev_turn is not None
                 and turn != self._prev_turn
                 and (self._last_bubble_key is None
@@ -355,8 +373,7 @@ class CoupGame:
         key         = None
 
         if dt == DecisionType.PICK_TARGET:
-            # Player picked an action that needs a target (Golpe, Assassino, Capitao…).
-            # This is the first announcement state for targeted actions.
+            # Player announced a targeted action (Golpe, Assassino, Capitão…).
             action      = ctx.get('action_name', '?')
             speaker_idx = state.current_turn
             key         = ('announce', speaker_idx, action, turn)
@@ -371,6 +388,7 @@ class CoupGame:
             text        = f"Sou o {action}!"
 
         elif dt == DecisionType.CHALLENGE_BLOCK:
+            # Blocker announced they're blocking with a card.
             blocker_idx = ctx.get('blocker_idx')
             card        = ctx.get('block_card', '?')
             speaker_idx = blocker_idx
@@ -378,6 +396,7 @@ class CoupGame:
             text        = f"Bloqueio com {card}!"
 
         elif dt == DecisionType.BLOCK_OR_PASS:
+            # Actor announced an open action (Ajuda Externa) open to block.
             actor_idx   = ctx.get('actor_idx')
             action      = ctx.get('action_name', '?')
             speaker_idx = actor_idx
@@ -385,13 +404,26 @@ class CoupGame:
             text        = f"{action}!"
 
         elif dt == DecisionType.DEFEND:
-            # Attacker already announced via PICK_TARGET — shares the same key,
-            # so this only fires if PICK_TARGET state was never seen by this client.
+            # Attacker already announced via PICK_TARGET — same key prevents duplicate.
+            # Only fires if PICK_TARGET state was never seen by this client.
             attacker_idx = ctx.get('attacker_idx')
             action       = ctx.get('action_name', '?')
             speaker_idx  = attacker_idx
             key          = ('announce', attacker_idx, action, turn)
             text         = f"{action}!"
+
+        elif dt == DecisionType.LOSE_INFLUENCE:
+            # A player must choose which card to lose — announce it.
+            speaker_idx = pd.player_index
+            key         = ('announce', speaker_idx, 'lose', turn)
+            text        = "Perco influência!"
+
+        elif dt == DecisionType.REVEAL:
+            # A challenged player must prove they have a card.
+            card        = ctx.get('card_name', '?')
+            speaker_idx = pd.player_index
+            key         = ('announce', speaker_idx, 'reveal', card, turn)
+            text        = f"Prove {card}!"
 
         if key and key != self._last_bubble_key and speaker_idx is not None and text is not None:
             self._last_bubble_key = key
@@ -449,6 +481,12 @@ class CoupGame:
                         self._state_queue.put(state)
                         if state.pending_decision is None:
                             self._game_over = True
+
+                    elif mtype == "info":
+                        # Narrative broadcast from server — already embedded in the
+                        # next state's event_log, but also stored locally so the log
+                        # panel updates immediately without waiting for a state update.
+                        pass  # event_log in state handles display
 
                     elif mtype == "error":
                         self._status_msg = f"Server error: {msg.get('msg', '?')}"

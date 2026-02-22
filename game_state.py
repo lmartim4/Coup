@@ -169,6 +169,10 @@ class GameStateView:
     pending_decision: Optional[PendingDecision]
     viewer_index: int
     cards_per_type: dict = field(default_factory=dict)
+    # Recent narrative events from the engine (shown in event log panel)
+    event_log: List[str] = field(default_factory=list)
+    # Info about the decision that was just submitted (drives post-decision bubbles)
+    last_action: Optional[dict] = None
 
     def to_dict(self) -> dict:
         return {
@@ -177,4 +181,6 @@ class GameStateView:
             'pending_decision': self.pending_decision.to_dict() if self.pending_decision else None,
             'viewer_index':     self.viewer_index,
             'cards_per_type':   self.cards_per_type,
+            'event_log':        self.event_log,
+            'last_action':      self.last_action,
         }

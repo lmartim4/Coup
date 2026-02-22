@@ -4,3 +4,4 @@ __pycache__
 build
 dist
 build_output
+.python-version
